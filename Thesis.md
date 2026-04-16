@@ -607,140 +607,9 @@ def fit(model, train_loader, val_loader, title, num_epochs=100, learning_rate=0.
 #trained_renet101_model = fit(resNet101Model, train_loader, val_loader, "ResNet101")
 #torch.save(trained_renet101_model.state_dict(), MODEL_RESNET101_FILE_PATH)
 
-trained_mobilenetv3_model = fit(mobileNetV3Model, train_loader, val_loader, "MobileNetV3")
-torch.save(trained_mobilenetv3_model.state_dict(), MODEL_MOBILE_NET_V3_FILE_PATH)
+#trained_mobilenetv3_model = fit(mobileNetV3Model, train_loader, val_loader, "MobileNetV3")
+#torch.save(trained_mobilenetv3_model.state_dict(), MODEL_MOBILE_NET_V3_FILE_PATH)
 ```
-
-    Starte Training auf Gerät: cuda für MobileNetV3
-    Epoch 1/100
-    ----------
-    train Loss: 0.8669 Acc: 0.6680 Precision: 0.6640 F1-Score: 0.6648
-    val Loss: 0.9635 Acc: 0.7387 Precision: 0.6933 F1-Score: 0.6830
-    Neues bestes Modell gespeichert!
-    
-    Epoch 2/100
-    ----------
-    train Loss: 0.6147 Acc: 0.7649 Precision: 0.7633 F1-Score: 0.7638
-    val Loss: 0.6116 Acc: 0.7838 Precision: 0.7789 F1-Score: 0.7546
-    Neues bestes Modell gespeichert!
-    
-    Epoch 3/100
-    ----------
-    train Loss: 0.4975 Acc: 0.8129 Precision: 0.8122 F1-Score: 0.8124
-    val Loss: 0.6251 Acc: 0.8177 Precision: 0.8064 F1-Score: 0.8003
-    Neues bestes Modell gespeichert!
-    
-    Epoch 4/100
-    ----------
-    train Loss: 0.4133 Acc: 0.8473 Precision: 0.8468 F1-Score: 0.8470
-    val Loss: 0.5542 Acc: 0.8233 Precision: 0.8405 F1-Score: 0.8283
-    Neues bestes Modell gespeichert!
-    
-    Epoch 5/100
-    ----------
-    train Loss: 0.3451 Acc: 0.8715 Precision: 0.8714 F1-Score: 0.8714
-    val Loss: 0.5605 Acc: 0.8191 Precision: 0.8283 F1-Score: 0.8214
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 6/100
-    ----------
-    train Loss: 0.2966 Acc: 0.8932 Precision: 0.8931 F1-Score: 0.8931
-    val Loss: 0.6105 Acc: 0.8242 Precision: 0.8228 F1-Score: 0.8176
-    Neues bestes Modell gespeichert!
-    
-    Epoch 7/100
-    ----------
-    train Loss: 0.2679 Acc: 0.9038 Precision: 0.9039 F1-Score: 0.9039
-    val Loss: 0.5954 Acc: 0.8195 Precision: 0.8329 F1-Score: 0.8169
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 8/100
-    ----------
-    train Loss: 0.2430 Acc: 0.9135 Precision: 0.9136 F1-Score: 0.9135
-    val Loss: 0.6568 Acc: 0.8195 Precision: 0.8322 F1-Score: 0.8224
-    Keine Verbesserung seit 2 Epoche(n).
-    
-    Epoch 9/100
-    ----------
-    train Loss: 0.1231 Acc: 0.9561 Precision: 0.9562 F1-Score: 0.9562
-    val Loss: 0.4962 Acc: 0.8750 Precision: 0.8744 F1-Score: 0.8741
-    Neues bestes Modell gespeichert!
-    
-    Epoch 10/100
-    ----------
-    train Loss: 0.0768 Acc: 0.9734 Precision: 0.9734 F1-Score: 0.9734
-    val Loss: 0.5335 Acc: 0.8755 Precision: 0.8709 F1-Score: 0.8722
-    Neues bestes Modell gespeichert!
-    
-    Epoch 11/100
-    ----------
-    train Loss: 0.0698 Acc: 0.9760 Precision: 0.9760 F1-Score: 0.9760
-    val Loss: 0.5171 Acc: 0.8816 Precision: 0.8786 F1-Score: 0.8794
-    Neues bestes Modell gespeichert!
-    
-    Epoch 12/100
-    ----------
-    train Loss: 0.0518 Acc: 0.9818 Precision: 0.9818 F1-Score: 0.9818
-    val Loss: 0.5970 Acc: 0.8722 Precision: 0.8676 F1-Score: 0.8675
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 13/100
-    ----------
-    train Loss: 0.0481 Acc: 0.9840 Precision: 0.9840 F1-Score: 0.9840
-    val Loss: 0.5923 Acc: 0.8741 Precision: 0.8686 F1-Score: 0.8690
-    Keine Verbesserung seit 2 Epoche(n).
-    
-    Epoch 14/100
-    ----------
-    train Loss: 0.0378 Acc: 0.9866 Precision: 0.9866 F1-Score: 0.9866
-    val Loss: 0.5810 Acc: 0.8759 Precision: 0.8704 F1-Score: 0.8715
-    Keine Verbesserung seit 3 Epoche(n).
-    
-    Epoch 15/100
-    ----------
-    train Loss: 0.0385 Acc: 0.9872 Precision: 0.9872 F1-Score: 0.9872
-    val Loss: 0.5810 Acc: 0.8778 Precision: 0.8724 F1-Score: 0.8733
-    Keine Verbesserung seit 4 Epoche(n).
-    
-    Epoch 16/100
-    ----------
-    train Loss: 0.0340 Acc: 0.9884 Precision: 0.9884 F1-Score: 0.9884
-    val Loss: 0.5829 Acc: 0.8783 Precision: 0.8732 F1-Score: 0.8744
-    Keine Verbesserung seit 5 Epoche(n).
-    
-    Epoch 17/100
-    ----------
-    train Loss: 0.0351 Acc: 0.9881 Precision: 0.9881 F1-Score: 0.9881
-    val Loss: 0.5899 Acc: 0.8778 Precision: 0.8727 F1-Score: 0.8736
-    Keine Verbesserung seit 6 Epoche(n).
-    
-    Epoch 18/100
-    ----------
-    train Loss: 0.0342 Acc: 0.9885 Precision: 0.9885 F1-Score: 0.9885
-    val Loss: 0.5939 Acc: 0.8792 Precision: 0.8740 F1-Score: 0.8748
-    Keine Verbesserung seit 7 Epoche(n).
-    
-    Epoch 19/100
-    ----------
-    train Loss: 0.0332 Acc: 0.9879 Precision: 0.9879 F1-Score: 0.9879
-    val Loss: 0.5909 Acc: 0.8769 Precision: 0.8719 F1-Score: 0.8724
-    Keine Verbesserung seit 8 Epoche(n).
-    
-    Epoch 20/100
-    ----------
-    train Loss: 0.0328 Acc: 0.9893 Precision: 0.9893 F1-Score: 0.9893
-    val Loss: 0.5913 Acc: 0.8788 Precision: 0.8737 F1-Score: 0.8745
-    Keine Verbesserung seit 9 Epoche(n).
-    
-    Epoch 21/100
-    ----------
-    train Loss: 0.0340 Acc: 0.9887 Precision: 0.9887 F1-Score: 0.9887
-    val Loss: 0.5921 Acc: 0.8816 Precision: 0.8767 F1-Score: 0.8775
-    Keine Verbesserung seit 10 Epoche(n).
-    
-    Early Stopping ausgelöst! Keine Verbesserung der Validation Accuracy über 10 aufeinanderfolgende Epochen.
-    Best Val Acc: 0.8816 Precision: 0.8786 F1-Score: 0.8794
-    
 
 ## 5. Vortrainierte Modelle laden
 Hier laden wir die Gewichte der fertig trainierten Modelle (.pth oder .pt Dateien). Dies ermöglicht eine exakte Reproduzierbarkeit der späteren Erklärungsgenerierung, ohne das Modell jedes Mal neu trainieren zu müssen.
@@ -754,9 +623,9 @@ loaded_data_mobilenetv3 = torch.load(MODEL_MOBILE_NET_V3_FILE_PATH)
 mobileNetV3Model.load_state_dict(loaded_data_mobilenetv3)
 ```
 
-    C:\Users\jalle\AppData\Local\Temp\ipykernel_29424\2924343579.py:1: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+    C:\Users\jalle\AppData\Local\Temp\ipykernel_24680\2924343579.py:1: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
       loaded_data_resnet101 = torch.load(MODEL_RESNET101_FILE_PATH)
-    C:\Users\jalle\AppData\Local\Temp\ipykernel_29424\2924343579.py:4: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+    C:\Users\jalle\AppData\Local\Temp\ipykernel_24680\2924343579.py:4: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
       loaded_data_mobilenetv3 = torch.load(MODEL_MOBILE_NET_V3_FILE_PATH)
     
 
@@ -920,7 +789,10 @@ def patched_perturb_func(arr, mask, **kwargs):
 
 # FAITHFULNESS
 metric_irof = quantus.IROF(
-    perturb_baseline="uniform",
+    #perturb_baseline="mean", is default =>  Rieger und Hansen betonen, dass es essenziell ist, die entfernten Bildsegmente durch den Mittelwert des Datensatzes zu ersetzen und nicht durch Rauschen (Uniform Noise) oder schwarze Pixel
+#. Rauschen würde das Bild so stark verfälschen, dass es außerhalb der gelernten Datenverteilung ("out-of-distribution") liegt
+#. Man würde dann nicht mehr messen, ob das Feature wichtig war, sondern nur, dass das CNN durch künstliches Rauschen verwirrt wird
+
     perturb_func=patched_perturb_func,
     return_aggregate=False,
     disable_warnings=True
@@ -1159,27 +1031,27 @@ def evaluateXai(model, target_layer, title, max_gradcam=32, max_lime=10):
     results_gradcam = evaluateGradCAM(model, x_gradcam, y_gradcam, target_layer)
         
     # 3. LIME Evaluierung (Alles in einem Rutsch)
-    #print(f"\n-> Evaluiere LIME ({len(x_lime)} Bilder)...")
-    #results_lime = evaluateLIME(model, x_lime, y_lime)
+    print(f"\n-> Evaluiere LIME ({len(x_lime)} Bilder)...")
+    results_lime = evaluateLIME(model, x_lime, y_lime)
     
     for key in metrics:
-        plot_xai_comparison(results_gradcam[key], results_gradcam[key], key)
+        plot_xai_comparison(results_gradcam[key], results_lime[key], key)
     
     print(f"\nEvaluation für {title} abgeschlossen!")
 
-# Aufruf
-#evaluateXai(resNet101Model, resNet101Model.layer4[-1], "ResNet101", max_gradcam=32, max_lime=10)
-evaluateXai(mobileNetV3Model, mobileNetV3Model.features[-1], "MobileNetV3", max_gradcam=32, max_lime=1)
+# Aufruf: GradCam und Lime später mit 60 Bildern. Das ist sehr Zeitintensiv (für Lime > 12 Std. mal 2 für Resnet und MobileNet)
+evaluateXai(resNet101Model, resNet101Model.layer4[-1], "ResNet101", max_gradcam=60, max_lime=10)
+evaluateXai(mobileNetV3Model, mobileNetV3Model.features[-1], "MobileNetV3", max_gradcam=60, max_lime=10)
 ```
 
     
     ========================================
-    Starte Evaluation - MobileNetV3
+    Starte Evaluation - ResNet101
     ========================================
-    Lade 32 Bilder aus dem Test-Loader für Grad-CAM...
-    Lade 1 Bilder aus dem Test-Loader für Lime...
+    Lade 60 Bilder aus dem Test-Loader für Grad-CAM...
+    Lade 10 Bilder aus dem Test-Loader für Lime...
     
-    -> Evaluiere Grad-CAM (32 Bilder)...
+    -> Evaluiere Grad-CAM (60 Bilder)...
     ------------------------------
     Evaluate Grad-CAM metric...
       -> Running metric: Faithfulness
@@ -1189,26 +1061,108 @@ evaluateXai(mobileNetV3Model, mobileNetV3Model.features[-1], "MobileNetV3", max_
       warnings.warn(
     
 
-        Dauer: 22.08s
-        Statistik: Mean: 63.2383 | Std: 23.8262 | Min: 21.1794 | Max: 97.4806
-        Einzel-Scores: [81.5283, 25.3408, 62.0366, 21.1794, 79.8785, 72.8582, 46.8814, 80.1528, 69.1412, 50.5558, 33.1736, 94.9674, 92.9497, 84.9372, 46.3734, 50.4831, 81.2812, 93.5996, 67.3646, 91.7926, 22.9869, 22.8431, 74.5011, 36.9337, 79.3773, 77.6759, 54.0860, 76.0735, 73.5968, 22.9117, 58.6846, 97.4806]
+        Dauer: 45.82s
+        Statistik: Mean: -54404.0977 | Std: 418103.6122 | Min: -3265918.5124 | Max: 96.4910
+        Einzel-Scores: [84.7631, 87.8961, 57.0491, 38.5585, 87.0967, 47.3351, 64.8685, 86.2504, 7.3488, 54.1460, 48.1408, 94.8144, 92.1089, 89.6047, 36.1775, 37.5969, -24.5231, 92.0068, 84.5923, 91.6171, 54.4481, -128.7446, 62.3471, 92.4045, 90.8645, 83.4114, 65.1108, 81.7638, 91.6296, 82.7585, 91.1464, 96.4910, 51.2304, -4.4153, 90.3803, 70.4182, 30.8279, 95.0723, 52.6756, -1369.2642, 25.0313, 40.5829, 48.9712, 90.8415, 32.1951, 88.0493, 44.3228, 80.4122, 70.0914, -525.2963, -3265918.5124, 55.5299, 64.7634, 90.7908, 92.4429, 59.5654, 82.2642, 51.8822, 83.8915, 58.3114]
     
       -> Running metric: Robustness
-        Dauer: 12.70s
-        Statistik: Mean: 0.3643 | Std: 0.1760 | Min: 0.1505 | Max: 0.8667
-        Einzel-Scores: [0.1868, 0.6598, 0.5076, 0.3950, 0.5928, 0.5252, 0.4009, 0.1642, 0.4176, 0.4004, 0.1636, 0.2245, 0.3315, 0.1505, 0.7605, 0.4885, 0.3179, 0.1626, 0.4550, 0.3808, 0.2671, 0.1742, 0.3332, 0.3041, 0.1921, 0.1978, 0.2230, 0.3362, 0.4610, 0.8667, 0.2891, 0.3269]
+        Dauer: 31.93s
+        Statistik: Mean: 0.4133 | Std: 0.1287 | Min: 0.2197 | Max: 0.9952
+        Einzel-Scores: [0.3024, 0.2901, 0.3102, 0.5668, 0.4535, 0.4384, 0.3734, 0.2829, 0.4570, 0.2783, 0.3851, 0.5087, 0.2197, 0.2831, 0.4783, 0.3499, 0.7511, 0.3974, 0.2440, 0.4094, 0.4345, 0.5129, 0.3928, 0.3304, 0.4157, 0.3355, 0.3046, 0.6950, 0.4436, 0.3718, 0.4019, 0.5080, 0.3407, 0.4194, 0.3471, 0.4514, 0.4511, 0.3381, 0.4472, 0.4756, 0.5278, 0.4261, 0.4778, 0.2895, 0.4628, 0.9952, 0.3526, 0.3700, 0.3315, 0.2817, 0.6074, 0.3843, 0.4021, 0.3331, 0.2577, 0.5857, 0.3476, 0.4976, 0.3522, 0.3211]
+    
+    
+    -> Evaluiere LIME (10 Bilder)...
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 543.02s
+        Statistik: Mean: 77.3812 | Std: 13.0795 | Min: 49.6401 | Max: 90.8717
+        Einzel-Scores: [90.6259, 90.8717, 75.7024, 61.1693, 89.9863, 78.0397, 73.5713, 89.1622, 49.6401, 75.0427]
+    
+      -> Running metric: Robustness
+        Dauer: 11101.93s
+        Statistik: Mean: 0.9187 | Std: 0.1404 | Min: 0.6335 | Max: 1.1456
+        Einzel-Scores: [0.8294, 0.6335, 1.1456, 1.0557, 0.8589, 0.8216, 0.8596, 1.0328, 0.9452, 1.0044]
     
     
 
 
     
-![png](output_44_3.png)
+![png](output_44_5.png)
     
 
 
 
     
-![png](output_44_4.png)
+![png](output_44_6.png)
+    
+
+
+    
+    Evaluation für ResNet101 abgeschlossen!
+    
+    ========================================
+    Starte Evaluation - MobileNetV3
+    ========================================
+    Lade 60 Bilder aus dem Test-Loader für Grad-CAM...
+    Lade 10 Bilder aus dem Test-Loader für Lime...
+    
+    -> Evaluiere Grad-CAM (60 Bilder)...
+    ------------------------------
+    Evaluate Grad-CAM metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 22.47s
+        Statistik: Mean: 51.3493 | Std: 32.1794 | Min: -35.9837 | Max: 97.6987
+        Einzel-Scores: [67.6284, 4.5181, 31.6453, 4.7831, 63.1065, 18.3806, 25.7831, 82.3433, 23.3823, 32.1785, 17.8243, 94.9891, 92.5804, 47.4636, 18.7255, 35.3163, 81.1230, 93.4186, 85.8677, 61.1624, 7.9764, 25.8328, 38.0820, 16.2917, 85.7440, 85.9906, 6.0825, 75.0587, 28.1208, 4.9261, 15.8995, 97.6987, 53.2942, 14.3095, 94.0264, 79.4283, 39.9741, 93.3917, 94.9423, 36.9069, 39.5320, 95.7582, 46.6077, 85.3951, 70.1496, 57.2992, 83.3937, 81.5449, 67.9211, -35.9837, 86.7150, 23.4412, 35.4940, 89.3522, 74.8694, 7.2738, 38.6147, 41.4633, 56.4482, 59.4697]
+    
+      -> Running metric: Robustness
+        Dauer: 29.04s
+        Statistik: Mean: 0.3059 | Std: 0.1438 | Min: 0.1020 | Max: 0.6304
+        Einzel-Scores: [0.1937, 0.4959, 0.6304, 0.3149, 0.4989, 0.5078, 0.3436, 0.1834, 0.4634, 0.4648, 0.1276, 0.2389, 0.3513, 0.1608, 0.6086, 0.5229, 0.3387, 0.1604, 0.4232, 0.3431, 0.2934, 0.1494, 0.3280, 0.3040, 0.1801, 0.1680, 0.3287, 0.2945, 0.4538, 0.5814, 0.2955, 0.2794, 0.1282, 0.1785, 0.2335, 0.1464, 0.4651, 0.1314, 0.1331, 0.3310, 0.3645, 0.2599, 0.4510, 0.1020, 0.3114, 0.6130, 0.2529, 0.1100, 0.1851, 0.1466, 0.3359, 0.3744, 0.3696, 0.1484, 0.1645, 0.2805, 0.1690, 0.3238, 0.1291, 0.4872]
+    
+    
+    -> Evaluiere LIME (10 Bilder)...
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 287.93s
+        Statistik: Mean: 61.8265 | Std: 23.7969 | Min: 25.1498 | Max: 91.1801
+        Einzel-Scores: [88.7460, 25.1498, 26.6936, 62.7499, 84.7520, 58.7787, 44.6557, 91.1801, 50.5214, 85.0379]
+    
+      -> Running metric: Robustness
+        Dauer: 6166.21s
+        Statistik: Mean: 0.8721 | Std: 0.2071 | Min: 0.6830 | Max: 1.3595
+        Einzel-Scores: [0.9564, 0.7455, 0.6959, 0.8887, 0.7480, 0.7225, 0.6830, 1.3595, 0.8061, 1.1149]
+    
+    
+
+
+    
+![png](output_44_12.png)
+    
+
+
+
+    
+![png](output_44_13.png)
     
 
 
@@ -1283,18 +1237,6 @@ visualize_explanations(mobileNetV3Model, images, labels, mobileNetV3Model.featur
 
 
 ```
-
-
-    
-![png](output_46_0.png)
-    
-
-
-
-    
-![png](output_46_1.png)
-    
-
 
 
 ```python
