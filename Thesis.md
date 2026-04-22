@@ -43,7 +43,8 @@ import pandas as pd
 
 from imblearn.over_sampling import RandomOverSampler
 from PIL import Image
-from skimage.segmentation import slic
+from skimage.segmentation import slic, mark_boundaries
+from skimage import color
 from sklearn.metrics import accuracy_score, classification_report, f1_score, precision_score, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
@@ -55,7 +56,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import models, transforms
 from torchvision.models import MobileNet_V3_Large_Weights
 
@@ -248,14 +249,6 @@ X_train, X_val, y_train, y_val = train_test_split(
     stratify=y_temp,
     random_state=42
 )
-
-X_xai, _, y_xai, _ = train_test_split(
-    X_test, 
-    y_test, 
-    train_size=60,         # Exakt 60 Bilder
-    stratify=y_test,       # Behält die HAM10000-Klassenverteilung bei
-    random_state=42        # Wichtig: Fixer Seed für reproduzierbare Ergebnisse!
-)
 ```
 
 ### Oversampling
@@ -263,15 +256,28 @@ Ein charakteristisches Merkmal des HAM10000-Datensatzes ist seine starke Klassen
 
 
 ```python
-oversample = RandomOverSampler(sampling_strategy={0:1000, 1:1500, 2:3000, 3:350, 4:3300, 5:6705, 6:450})
+# 1. Wie viele Bilder pro Klasse sind AKTUELL in y_train?
+train_counts = Counter(y_train)
+majority_class_count = max(train_counts.values())
 
-X_train_oversampled, y_train_oversampled = oversample.fit_resample(X_train , y_train)
+# 2. Dynamische Strategie nach Sangwans "Max 300% Increase" Regel berechnen
+dynamic_strategy = {}
+for cls, count in train_counts.items():
+    # Wir vervierfachen die Minderheitsklassen (Original + 300% Increase) (Sangwan)
+    # aber wir deckeln es bei der Größe der Mehrheitsklasse, damit keine Klasse 
+    # größer wird als die Mehrheitsklasse.
+    target_count = min(count * 4, majority_class_count)
+    dynamic_strategy[cls] = target_count
+
+# 3. Den Sampler mit der dynamischen Strategie anwenden
+oversample = RandomOverSampler(sampling_strategy=dynamic_strategy, random_state=42)
+X_train_oversampled, y_train_oversampled = oversample.fit_resample(X_train, y_train)
 
 y_train_oversampled_text = label_encoder.inverse_transform(y_train_oversampled)
 print(f"Verteilung nach Sangwan-Oversampling: {Counter(y_train_oversampled_text)}")
 ```
 
-    Verteilung nach Sangwan-Oversampling: Counter({'nv': 6705, 'mel': 3300, 'bkl': 3000, 'bcc': 1500, 'akiec': 1000, 'vasc': 450, 'df': 350})
+    Verteilung nach Sangwan-Oversampling: Counter({'nv': 4274, 'mel': 2836, 'bkl': 2804, 'bcc': 1312, 'akiec': 836, 'vasc': 360, 'df': 292})
     
 
 ### HAM10000Dataset Klasse
@@ -408,16 +414,9 @@ test_dataset = HAM10000Dataset(
     transform=validation_data_image_transformer  # Nur Resize/Normalize
 )
 
-xai_dataset = HAM10000Dataset(
-    X_xai['path'],
-    y_xai,
-    transform=validation_data_image_transformer  # Nur Resize/Normalize, keine Augmentierung!
-)
-
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True) # nur 32 Batchsize... sind das nicht zu wenig... wie funktioniert das?
 val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-xai_loader = DataLoader(xai_dataset, batch_size=4,shuffle=False)
 
 ```
 
@@ -443,18 +442,6 @@ resNet101Model.fc = nn.Sequential(
     nn.Dropout(0.5),  # WICHTIG: Gegen Overfitting (siehe Sangwan)
     nn.Linear(512, 7)  # Output: 7 Klassen für HAM10000
 )
-
- # 2. ALLES einfrieren (Basis-Wissen bewahren)
-for param in resNet101Model.parameters():
-    param.requires_grad = False
-
-# 3. Den letzten großen Block auftauen (Fine-Tuning)
-# Bei ResNet ist das "layer4".
-for param in resNet101Model.layer4.parameters():
-    param.requires_grad = True
-
-for param in resNet101Model.fc.parameters():
-    param.requires_grad = True
 ```
 
 ### MobileNetV3 erstellen
@@ -464,7 +451,7 @@ Im direkten Kontrast dazu steht das MobileNetV3. Diese Architekturfamilie wurde 
 ```python
 mobileNetV3Model = models.mobilenet_v3_large(weights=MobileNet_V3_Large_Weights.IMAGENET1K_V1)
 
-# 2. Den Classifier inspizieren und anpassen
+# Den Classifier inspizieren und anpassen
 # Der Classifier ist ein nn.Sequential Block.
 # Struktur meist:
 # (0): Linear (...)
@@ -475,12 +462,11 @@ mobileNetV3Model = models.mobilenet_v3_large(weights=MobileNet_V3_Large_Weights.
 last_layer_index = len(mobileNetV3Model.classifier) - 1
 in_features = mobileNetV3Model.classifier[last_layer_index].in_features
 
-# OPTIMIERUNG 1: Dropout erhöhen
 # Um Overfitting bei den relativ kleinen medizinischen Daten zu vermeiden,
-# erhöhen wir den Dropout vor der Klassifikation auf 0.5 (Sangwan).
-mobileNetV3Model.classifier[last_layer_index - 1] = nn.Dropout(p=0.5, inplace=True)
+# Dropout anpassen Hossain et al. (2024)
+mobileNetV3Model.classifier[last_layer_index - 1] = nn.Dropout(p=0.3, inplace=True)
 
-# OPTIMIERUNG 2: Letzte Schicht auf 7 Klassen (HAM10000) anpassen
+# Letzte Schicht auf 7 Klassen (HAM10000) anpassen
 mobileNetV3Model.classifier[last_layer_index] = nn.Linear(in_features, 7)
 ```
 
@@ -491,7 +477,7 @@ In diesem Schritt erfolgt das eigentliche Fine-Tuning der beiden Modelle. Die ob
 
 
 ```python
-def fit(model, train_loader, val_loader, title, num_epochs=100, learning_rate=0.001, early_stop_patience=10):
+def fit(model, train_loader, val_loader, title, num_epochs=100, learning_rate=0.00001, early_stop_patience=10):
     """
     Implementierung der Trainingsschleife basierend auf Sangwan (2024).
     Nutzt Adam Optimizer und ReduceLROnPlateau.
@@ -499,16 +485,19 @@ def fit(model, train_loader, val_loader, title, num_epochs=100, learning_rate=0.
     # Definition der Loss-Funktion: "Categorical Cross Entropy"
     criterion = nn.CrossEntropyLoss()
 
+    # WICHTIG: Wir übergeben dem Optimierer NUR die Parameter, die aufgetaut sind!
+    trainable_params = filter(lambda p: p.requires_grad, model.parameters())
+    
     # Definition des Optimizers: "Adam"
     # Wir optimieren nur die Parameter, die requires_grad=True haben (unser neuer Classifier Head).
     # „Für das Training des Klassifikators wurde der Adam-Optimizer gewählt. Im Gegensatz zum klassischen Stochastic Gradient Descent (SGD)
     # nutzt Adam adaptive Lernraten, was in der Literatur (Kingma & Ba, 2014) und in der Referenzstudie von Sangwan (2024) mit einer
     # schnelleren Konvergenz des Modells begründet wird.“
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(trainable_params, lr=learning_rate)
 
     # Learning Rate Scheduler: "Reduce on plateau was used"
     # Reduziert die Lernrate, wenn der Validation-Loss nicht mehr sinkt.
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2)
 
     model = model.to(device)
 
@@ -558,7 +547,9 @@ def fit(model, train_loader, val_loader, title, num_epochs=100, learning_rate=0.
                     if phase == 'train':
                         loss.backward()
                         optimizer.step()
-
+                        
+                # echtes lernen nur bis hier
+                # --------------------------------------
                 # Statistiken sammeln
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
@@ -603,13 +594,781 @@ def fit(model, train_loader, val_loader, title, num_epochs=100, learning_rate=0.
     # Das beste Modell laden und zurückgeben
     model.load_state_dict(best_model_wts)
     return model
-
-#trained_renet101_model = fit(resNet101Model, train_loader, val_loader, "ResNet101")
-#torch.save(trained_renet101_model.state_dict(), MODEL_RESNET101_FILE_PATH)
-
-#trained_mobilenetv3_model = fit(mobileNetV3Model, train_loader, val_loader, "MobileNetV3")
-#torch.save(trained_mobilenetv3_model.state_dict(), MODEL_MOBILE_NET_V3_FILE_PATH)
 ```
+
+#### Modell MobileNetV3 trainieren
+Vorsicht: Folgender Aufruf ist sehr zeitintensiv. (mehrere Stunden)
+
+
+```python
+#Komplettes Netz einfrieren, nur Classifier auftauen!
+for param in mobileNetV3Model.parameters():
+    param.requires_grad = False
+    
+for param in mobileNetV3Model.classifier.parameters():
+    param.requires_grad = True
+    
+mobileNetV3Model = fit(
+    model=mobileNetV3Model, 
+    train_loader=train_loader, 
+    val_loader=val_loader, 
+    title="MobileNetV3 Phase 1 (Warm-Up Kopf)", 
+    num_epochs=20,             # Nur kurzes Aufwärmen
+    learning_rate=0.001,       
+    early_stop_patience=5      # Kann hier sehr kurz sein
+)
+
+print("\nEntfriere das gesamte Netzwerk für das Fine-Tuning...")
+
+# Nur das letzte Viertel des Netzwerks auftauen!
+# PyTorch's MobileNetV3 hat die Faltungsschichten im Block 'features'.
+# Wir tauen nur die letzten 4 Blöcke auf (Index -4 bis Ende), der Rest bleibt sicher eingefroren!
+for param in mobileNetV3Model.features[-4:].parameters():
+    param.requires_grad = True
+
+# Wir tauen nun das gesamte Netzwerk auf, um die tieferen Schichten an die 
+# spezifischen Hautkrebs-Merkmale anzupassen ("and then all layers were trained 
+# to fine-tune the models" - Alfi et al., 2022).
+for param in mobileNetV3Model.parameters():
+    param.requires_grad = True
+
+# Jetzt starten wir das eigentliche lange Training. 
+# WICHTIG: Die Lernrate MUSS jetzt mikroskopisch klein sein, da wir das 
+# Netz nur "feinjustieren" und nicht aus dem Konzept bringen wollen!
+mobileNetV3Model = fit(
+    model=mobileNetV3Model, 
+    train_loader=train_loader, 
+    val_loader=val_loader, 
+    title="MobileNetV3 Phase 2 (Full Fine-Tuning)", 
+    num_epochs=50,             # Jetzt dürfen es mehr Epochen sein
+    learning_rate=1e-5,        # extrem wichtig für Fine-Tuning!
+    early_stop_patience=10     # Jetzt greift das eigentliche Early Stopping
+)
+
+torch.save(mobileNetV3Model.state_dict(), MODEL_MOBILE_NET_V3_FILE_PATH)
+```
+
+    Starte Training auf Gerät: cuda für MobileNetV3 Phase 1 (Warm-Up Kopf)
+    Epoch 1/20
+    ----------
+    train Loss: 0.9196 Acc: 0.6465 Precision: 0.6434 F1-Score: 0.6434
+    val Loss: 0.7042 Acc: 0.7486 Precision: 0.7698 F1-Score: 0.7515
+    Neues bestes Modell gespeichert!
+    
+    Epoch 2/20
+    ----------
+    train Loss: 0.8394 Acc: 0.6825 Precision: 0.6815 F1-Score: 0.6813
+    val Loss: 0.7452 Acc: 0.7298 Precision: 0.7711 F1-Score: 0.7444
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 3/20
+    ----------
+    train Loss: 0.8027 Acc: 0.6886 Precision: 0.6875 F1-Score: 0.6873
+    val Loss: 0.6866 Acc: 0.7514 Precision: 0.7839 F1-Score: 0.7599
+    Neues bestes Modell gespeichert!
+    
+    Epoch 4/20
+    ----------
+    train Loss: 0.7593 Acc: 0.7092 Precision: 0.7086 F1-Score: 0.7086
+    val Loss: 0.7051 Acc: 0.7486 Precision: 0.7880 F1-Score: 0.7622
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 5/20
+    ----------
+    train Loss: 0.7383 Acc: 0.7184 Precision: 0.7179 F1-Score: 0.7178
+    val Loss: 0.7061 Acc: 0.7566 Precision: 0.7781 F1-Score: 0.7571
+    Neues bestes Modell gespeichert!
+    
+    Epoch 6/20
+    ----------
+    train Loss: 0.6993 Acc: 0.7303 Precision: 0.7302 F1-Score: 0.7300
+    val Loss: 0.7202 Acc: 0.7350 Precision: 0.7931 F1-Score: 0.7533
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 7/20
+    ----------
+    train Loss: 0.6124 Acc: 0.7678 Precision: 0.7679 F1-Score: 0.7677
+    val Loss: 0.6365 Acc: 0.7721 Precision: 0.7854 F1-Score: 0.7757
+    Neues bestes Modell gespeichert!
+    
+    Epoch 8/20
+    ----------
+    train Loss: 0.5900 Acc: 0.7741 Precision: 0.7743 F1-Score: 0.7740
+    val Loss: 0.6517 Acc: 0.7679 Precision: 0.7853 F1-Score: 0.7731
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 9/20
+    ----------
+    train Loss: 0.5693 Acc: 0.7801 Precision: 0.7799 F1-Score: 0.7798
+    val Loss: 0.6435 Acc: 0.7768 Precision: 0.7947 F1-Score: 0.7837
+    Neues bestes Modell gespeichert!
+    
+    Epoch 10/20
+    ----------
+    train Loss: 0.5368 Acc: 0.7963 Precision: 0.7961 F1-Score: 0.7961
+    val Loss: 0.7028 Acc: 0.7594 Precision: 0.7957 F1-Score: 0.7709
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 11/20
+    ----------
+    train Loss: 0.4926 Acc: 0.8158 Precision: 0.8159 F1-Score: 0.8157
+    val Loss: 0.6322 Acc: 0.7801 Precision: 0.7949 F1-Score: 0.7853
+    Neues bestes Modell gespeichert!
+    
+    Epoch 12/20
+    ----------
+    train Loss: 0.4909 Acc: 0.8157 Precision: 0.8160 F1-Score: 0.8158
+    val Loss: 0.6500 Acc: 0.7749 Precision: 0.7907 F1-Score: 0.7804
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 13/20
+    ----------
+    train Loss: 0.4800 Acc: 0.8202 Precision: 0.8205 F1-Score: 0.8202
+    val Loss: 0.6354 Acc: 0.7744 Precision: 0.7918 F1-Score: 0.7793
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 14/20
+    ----------
+    train Loss: 0.4694 Acc: 0.8236 Precision: 0.8238 F1-Score: 0.8236
+    val Loss: 0.6161 Acc: 0.7852 Precision: 0.7964 F1-Score: 0.7896
+    Neues bestes Modell gespeichert!
+    
+    Epoch 15/20
+    ----------
+    train Loss: 0.4555 Acc: 0.8294 Precision: 0.8296 F1-Score: 0.8294
+    val Loss: 0.6232 Acc: 0.7796 Precision: 0.7909 F1-Score: 0.7833
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 16/20
+    ----------
+    train Loss: 0.4577 Acc: 0.8280 Precision: 0.8280 F1-Score: 0.8279
+    val Loss: 0.6211 Acc: 0.7876 Precision: 0.7998 F1-Score: 0.7911
+    Neues bestes Modell gespeichert!
+    
+    Epoch 17/20
+    ----------
+    train Loss: 0.4414 Acc: 0.8366 Precision: 0.8367 F1-Score: 0.8365
+    val Loss: 0.6141 Acc: 0.7871 Precision: 0.7956 F1-Score: 0.7904
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 18/20
+    ----------
+    train Loss: 0.4358 Acc: 0.8377 Precision: 0.8378 F1-Score: 0.8376
+    val Loss: 0.6504 Acc: 0.7740 Precision: 0.7979 F1-Score: 0.7822
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 19/20
+    ----------
+    train Loss: 0.4298 Acc: 0.8381 Precision: 0.8383 F1-Score: 0.8382
+    val Loss: 0.6580 Acc: 0.7824 Precision: 0.8035 F1-Score: 0.7903
+    Keine Verbesserung seit 3 Epoche(n).
+    
+    Epoch 20/20
+    ----------
+    train Loss: 0.4261 Acc: 0.8445 Precision: 0.8447 F1-Score: 0.8445
+    val Loss: 0.6043 Acc: 0.7862 Precision: 0.7876 F1-Score: 0.7864
+    Keine Verbesserung seit 4 Epoche(n).
+    
+    Best Val Acc: 0.7876 Precision: 0.7998 F1-Score: 0.7911
+    
+    Entfriere das gesamte Netzwerk für das Fine-Tuning...
+    Starte Training auf Gerät: cuda für MobileNetV3 Phase 2 (Full Fine-Tuning)
+    Epoch 1/50
+    ----------
+    train Loss: 0.4115 Acc: 0.8490 Precision: 0.8491 F1-Score: 0.8489
+    val Loss: 0.5871 Acc: 0.7998 Precision: 0.8074 F1-Score: 0.8022
+    Neues bestes Modell gespeichert!
+    
+    Epoch 2/50
+    ----------
+    train Loss: 0.3795 Acc: 0.8602 Precision: 0.8603 F1-Score: 0.8601
+    val Loss: 0.5648 Acc: 0.8102 Precision: 0.8154 F1-Score: 0.8118
+    Neues bestes Modell gespeichert!
+    
+    Epoch 3/50
+    ----------
+    train Loss: 0.3490 Acc: 0.8709 Precision: 0.8710 F1-Score: 0.8709
+    val Loss: 0.5541 Acc: 0.8106 Precision: 0.8123 F1-Score: 0.8099
+    Neues bestes Modell gespeichert!
+    
+    Epoch 4/50
+    ----------
+    train Loss: 0.3158 Acc: 0.8844 Precision: 0.8844 F1-Score: 0.8843
+    val Loss: 0.5443 Acc: 0.8177 Precision: 0.8233 F1-Score: 0.8192
+    Neues bestes Modell gespeichert!
+    
+    Epoch 5/50
+    ----------
+    train Loss: 0.3117 Acc: 0.8878 Precision: 0.8879 F1-Score: 0.8878
+    val Loss: 0.5354 Acc: 0.8210 Precision: 0.8239 F1-Score: 0.8211
+    Neues bestes Modell gespeichert!
+    
+    Epoch 6/50
+    ----------
+    train Loss: 0.2973 Acc: 0.8948 Precision: 0.8950 F1-Score: 0.8948
+    val Loss: 0.5285 Acc: 0.8214 Precision: 0.8232 F1-Score: 0.8212
+    Neues bestes Modell gespeichert!
+    
+    Epoch 7/50
+    ----------
+    train Loss: 0.2776 Acc: 0.9012 Precision: 0.9013 F1-Score: 0.9012
+    val Loss: 0.5296 Acc: 0.8238 Precision: 0.8244 F1-Score: 0.8226
+    Neues bestes Modell gespeichert!
+    
+    Epoch 8/50
+    ----------
+    train Loss: 0.2818 Acc: 0.8992 Precision: 0.8993 F1-Score: 0.8993
+    val Loss: 0.5229 Acc: 0.8252 Precision: 0.8278 F1-Score: 0.8253
+    Neues bestes Modell gespeichert!
+    
+    Epoch 9/50
+    ----------
+    train Loss: 0.2588 Acc: 0.9076 Precision: 0.9078 F1-Score: 0.9076
+    val Loss: 0.5184 Acc: 0.8313 Precision: 0.8327 F1-Score: 0.8305
+    Neues bestes Modell gespeichert!
+    
+    Epoch 10/50
+    ----------
+    train Loss: 0.2435 Acc: 0.9136 Precision: 0.9138 F1-Score: 0.9136
+    val Loss: 0.5129 Acc: 0.8304 Precision: 0.8310 F1-Score: 0.8294
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 11/50
+    ----------
+    train Loss: 0.2424 Acc: 0.9154 Precision: 0.9154 F1-Score: 0.9154
+    val Loss: 0.5113 Acc: 0.8355 Precision: 0.8351 F1-Score: 0.8341
+    Neues bestes Modell gespeichert!
+    
+    Epoch 12/50
+    ----------
+    train Loss: 0.2281 Acc: 0.9188 Precision: 0.9189 F1-Score: 0.9188
+    val Loss: 0.5066 Acc: 0.8402 Precision: 0.8396 F1-Score: 0.8384
+    Neues bestes Modell gespeichert!
+    
+    Epoch 13/50
+    ----------
+    train Loss: 0.2206 Acc: 0.9241 Precision: 0.9242 F1-Score: 0.9241
+    val Loss: 0.5036 Acc: 0.8426 Precision: 0.8405 F1-Score: 0.8403
+    Neues bestes Modell gespeichert!
+    
+    Epoch 14/50
+    ----------
+    train Loss: 0.2064 Acc: 0.9291 Precision: 0.9291 F1-Score: 0.9291
+    val Loss: 0.5038 Acc: 0.8416 Precision: 0.8387 F1-Score: 0.8390
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 15/50
+    ----------
+    train Loss: 0.2121 Acc: 0.9269 Precision: 0.9268 F1-Score: 0.9268
+    val Loss: 0.5001 Acc: 0.8388 Precision: 0.8364 F1-Score: 0.8368
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 16/50
+    ----------
+    train Loss: 0.2072 Acc: 0.9274 Precision: 0.9274 F1-Score: 0.9274
+    val Loss: 0.4992 Acc: 0.8454 Precision: 0.8430 F1-Score: 0.8431
+    Neues bestes Modell gespeichert!
+    
+    Epoch 17/50
+    ----------
+    train Loss: 0.1959 Acc: 0.9338 Precision: 0.9340 F1-Score: 0.9338
+    val Loss: 0.4883 Acc: 0.8445 Precision: 0.8403 F1-Score: 0.8410
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 18/50
+    ----------
+    train Loss: 0.1881 Acc: 0.9368 Precision: 0.9369 F1-Score: 0.9368
+    val Loss: 0.4912 Acc: 0.8459 Precision: 0.8427 F1-Score: 0.8430
+    Neues bestes Modell gespeichert!
+    
+    Epoch 19/50
+    ----------
+    train Loss: 0.1850 Acc: 0.9342 Precision: 0.9342 F1-Score: 0.9342
+    val Loss: 0.4964 Acc: 0.8421 Precision: 0.8400 F1-Score: 0.8398
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 20/50
+    ----------
+    train Loss: 0.1766 Acc: 0.9397 Precision: 0.9398 F1-Score: 0.9397
+    val Loss: 0.4889 Acc: 0.8477 Precision: 0.8438 F1-Score: 0.8444
+    Neues bestes Modell gespeichert!
+    
+    Epoch 21/50
+    ----------
+    train Loss: 0.1677 Acc: 0.9428 Precision: 0.9429 F1-Score: 0.9428
+    val Loss: 0.4896 Acc: 0.8463 Precision: 0.8420 F1-Score: 0.8430
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 22/50
+    ----------
+    train Loss: 0.1712 Acc: 0.9408 Precision: 0.9408 F1-Score: 0.9408
+    val Loss: 0.4924 Acc: 0.8473 Precision: 0.8424 F1-Score: 0.8430
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 23/50
+    ----------
+    train Loss: 0.1637 Acc: 0.9416 Precision: 0.9417 F1-Score: 0.9417
+    val Loss: 0.4916 Acc: 0.8487 Precision: 0.8446 F1-Score: 0.8446
+    Neues bestes Modell gespeichert!
+    
+    Epoch 24/50
+    ----------
+    train Loss: 0.1566 Acc: 0.9457 Precision: 0.9457 F1-Score: 0.9456
+    val Loss: 0.4916 Acc: 0.8477 Precision: 0.8437 F1-Score: 0.8441
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 25/50
+    ----------
+    train Loss: 0.1591 Acc: 0.9446 Precision: 0.9446 F1-Score: 0.9446
+    val Loss: 0.4881 Acc: 0.8506 Precision: 0.8463 F1-Score: 0.8469
+    Neues bestes Modell gespeichert!
+    
+    Epoch 26/50
+    ----------
+    train Loss: 0.1563 Acc: 0.9457 Precision: 0.9457 F1-Score: 0.9457
+    val Loss: 0.4892 Acc: 0.8477 Precision: 0.8444 F1-Score: 0.8446
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 27/50
+    ----------
+    train Loss: 0.1579 Acc: 0.9442 Precision: 0.9444 F1-Score: 0.9443
+    val Loss: 0.4873 Acc: 0.8468 Precision: 0.8430 F1-Score: 0.8436
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 28/50
+    ----------
+    train Loss: 0.1562 Acc: 0.9477 Precision: 0.9477 F1-Score: 0.9477
+    val Loss: 0.4889 Acc: 0.8496 Precision: 0.8458 F1-Score: 0.8460
+    Keine Verbesserung seit 3 Epoche(n).
+    
+    Epoch 29/50
+    ----------
+    train Loss: 0.1523 Acc: 0.9486 Precision: 0.9487 F1-Score: 0.9486
+    val Loss: 0.4866 Acc: 0.8510 Precision: 0.8464 F1-Score: 0.8473
+    Neues bestes Modell gespeichert!
+    
+    Epoch 30/50
+    ----------
+    train Loss: 0.1525 Acc: 0.9468 Precision: 0.9469 F1-Score: 0.9468
+    val Loss: 0.4880 Acc: 0.8501 Precision: 0.8453 F1-Score: 0.8461
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 31/50
+    ----------
+    train Loss: 0.1474 Acc: 0.9506 Precision: 0.9506 F1-Score: 0.9506
+    val Loss: 0.4886 Acc: 0.8520 Precision: 0.8470 F1-Score: 0.8479
+    Neues bestes Modell gespeichert!
+    
+    Epoch 32/50
+    ----------
+    train Loss: 0.1490 Acc: 0.9498 Precision: 0.9498 F1-Score: 0.9498
+    val Loss: 0.4885 Acc: 0.8515 Precision: 0.8471 F1-Score: 0.8477
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 33/50
+    ----------
+    train Loss: 0.1442 Acc: 0.9512 Precision: 0.9513 F1-Score: 0.9512
+    val Loss: 0.4884 Acc: 0.8524 Precision: 0.8469 F1-Score: 0.8480
+    Neues bestes Modell gespeichert!
+    
+    Epoch 34/50
+    ----------
+    train Loss: 0.1469 Acc: 0.9490 Precision: 0.9490 F1-Score: 0.9489
+    val Loss: 0.4875 Acc: 0.8510 Precision: 0.8458 F1-Score: 0.8469
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 35/50
+    ----------
+    train Loss: 0.1464 Acc: 0.9501 Precision: 0.9502 F1-Score: 0.9501
+    val Loss: 0.4880 Acc: 0.8496 Precision: 0.8443 F1-Score: 0.8455
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 36/50
+    ----------
+    train Loss: 0.1481 Acc: 0.9490 Precision: 0.9491 F1-Score: 0.9490
+    val Loss: 0.4868 Acc: 0.8487 Precision: 0.8436 F1-Score: 0.8448
+    Keine Verbesserung seit 3 Epoche(n).
+    
+    Epoch 37/50
+    ----------
+    train Loss: 0.1433 Acc: 0.9544 Precision: 0.9544 F1-Score: 0.9544
+    val Loss: 0.4866 Acc: 0.8515 Precision: 0.8465 F1-Score: 0.8474
+    Keine Verbesserung seit 4 Epoche(n).
+    
+    Epoch 38/50
+    ----------
+    train Loss: 0.1470 Acc: 0.9512 Precision: 0.9512 F1-Score: 0.9512
+    val Loss: 0.4870 Acc: 0.8510 Precision: 0.8464 F1-Score: 0.8471
+    Keine Verbesserung seit 5 Epoche(n).
+    
+    Epoch 39/50
+    ----------
+    train Loss: 0.1476 Acc: 0.9491 Precision: 0.9492 F1-Score: 0.9491
+    val Loss: 0.4870 Acc: 0.8524 Precision: 0.8474 F1-Score: 0.8485
+    Keine Verbesserung seit 6 Epoche(n).
+    
+    Epoch 40/50
+    ----------
+    train Loss: 0.1430 Acc: 0.9509 Precision: 0.9509 F1-Score: 0.9509
+    val Loss: 0.4860 Acc: 0.8496 Precision: 0.8447 F1-Score: 0.8459
+    Keine Verbesserung seit 7 Epoche(n).
+    
+    Epoch 41/50
+    ----------
+    train Loss: 0.1427 Acc: 0.9527 Precision: 0.9527 F1-Score: 0.9527
+    val Loss: 0.4879 Acc: 0.8534 Precision: 0.8482 F1-Score: 0.8489
+    Neues bestes Modell gespeichert!
+    
+    Epoch 42/50
+    ----------
+    train Loss: 0.1422 Acc: 0.9520 Precision: 0.9521 F1-Score: 0.9520
+    val Loss: 0.4864 Acc: 0.8515 Precision: 0.8464 F1-Score: 0.8473
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 43/50
+    ----------
+    train Loss: 0.1427 Acc: 0.9515 Precision: 0.9516 F1-Score: 0.9515
+    val Loss: 0.4862 Acc: 0.8506 Precision: 0.8453 F1-Score: 0.8465
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 44/50
+    ----------
+    train Loss: 0.1413 Acc: 0.9537 Precision: 0.9537 F1-Score: 0.9536
+    val Loss: 0.4862 Acc: 0.8524 Precision: 0.8472 F1-Score: 0.8481
+    Keine Verbesserung seit 3 Epoche(n).
+    
+    Epoch 45/50
+    ----------
+    train Loss: 0.1419 Acc: 0.9523 Precision: 0.9523 F1-Score: 0.9523
+    val Loss: 0.4855 Acc: 0.8524 Precision: 0.8475 F1-Score: 0.8485
+    Keine Verbesserung seit 4 Epoche(n).
+    
+    Epoch 46/50
+    ----------
+    train Loss: 0.1459 Acc: 0.9504 Precision: 0.9505 F1-Score: 0.9504
+    val Loss: 0.4851 Acc: 0.8501 Precision: 0.8453 F1-Score: 0.8463
+    Keine Verbesserung seit 5 Epoche(n).
+    
+    Epoch 47/50
+    ----------
+    train Loss: 0.1447 Acc: 0.9513 Precision: 0.9513 F1-Score: 0.9513
+    val Loss: 0.4854 Acc: 0.8524 Precision: 0.8476 F1-Score: 0.8484
+    Keine Verbesserung seit 6 Epoche(n).
+    
+    Epoch 48/50
+    ----------
+    train Loss: 0.1433 Acc: 0.9520 Precision: 0.9520 F1-Score: 0.9520
+    val Loss: 0.4854 Acc: 0.8506 Precision: 0.8455 F1-Score: 0.8466
+    Keine Verbesserung seit 7 Epoche(n).
+    
+    Epoch 49/50
+    ----------
+    train Loss: 0.1424 Acc: 0.9511 Precision: 0.9511 F1-Score: 0.9511
+    val Loss: 0.4876 Acc: 0.8524 Precision: 0.8474 F1-Score: 0.8484
+    Keine Verbesserung seit 8 Epoche(n).
+    
+    Epoch 50/50
+    ----------
+    train Loss: 0.1446 Acc: 0.9514 Precision: 0.9514 F1-Score: 0.9514
+    val Loss: 0.4870 Acc: 0.8510 Precision: 0.8462 F1-Score: 0.8467
+    Keine Verbesserung seit 9 Epoche(n).
+    
+    Best Val Acc: 0.8534 Precision: 0.8482 F1-Score: 0.8489
+    
+
+#### Modell ResNet101 trainieren
+Vorsicht: Folgender Aufruf ist sehr zeitintensiv. (mehrere Stunden)
+
+
+```python
+# ALLES einfrieren (Basis-Wissen bewahren)...
+for param in resNet101Model.parameters():
+    param.requires_grad = False
+    
+# ... bis auf die letzten Layer
+for param in resNet101Model.layer4.parameters():
+    param.requires_grad = True
+
+for param in resNet101Model.fc.parameters():
+    param.requires_grad = True
+
+resNet101Model = fit(
+    model=resNet101Model, 
+    train_loader=train_loader, 
+    val_loader=val_loader, 
+    title="ResNet101 Phase 1 (Warm-Up Kopf)", 
+    num_epochs=20,             # Nur kurzes Aufwärmen
+    learning_rate=0.001,       
+    early_stop_patience=5      # Kann hier sehr kurz sein
+)
+
+print("\nEntfriere das gesamte Netzwerk für das Fine-Tuning...")
+
+# Wir tauen nun das gesamte Netzwerk auf, um die tieferen Schichten an die 
+# spezifischen Hautkrebs-Merkmale anzupassen ("and then all layers were trained 
+# to fine-tune the models" - Alfi et al., 2022).
+for param in resNet101Model.parameters():
+    param.requires_grad = True
+
+# Jetzt starten wir das eigentliche lange Training. 
+# WICHTIG: Die Lernrate MUSS jetzt mikroskopisch klein sein, da wir das 
+# Netz nur "feinjustieren" und nicht aus dem Konzept bringen wollen!
+resNet101Model = fit(
+    model=resNet101Model, 
+    train_loader=train_loader, 
+    val_loader=val_loader, 
+    title="ResNet101 Phase 2 (Full Fine-Tuning)", 
+    num_epochs=50,             # Jetzt dürfen es mehr Epochen sein
+    learning_rate=1e-5,        # extrem wichtig für Fine-Tuning!
+    early_stop_patience=10     # Jetzt greift das eigentliche Early Stopping
+)
+
+torch.save(resNet101Model.state_dict(), MODEL_RESNET101_FILE_PATH)
+```
+
+    Starte Training auf Gerät: cuda für ResNet101 Phase 1 (Warm-Up Kopf)
+    Epoch 1/20
+    ----------
+    train Loss: 0.9654 Acc: 0.6387 Precision: 0.6358 F1-Score: 0.6317
+    val Loss: 0.5117 Acc: 0.8195 Precision: 0.8083 F1-Score: 0.8070
+    Neues bestes Modell gespeichert!
+    
+    Epoch 2/20
+    ----------
+    train Loss: 0.6297 Acc: 0.7682 Precision: 0.7678 F1-Score: 0.7676
+    val Loss: 0.4876 Acc: 0.8261 Precision: 0.8283 F1-Score: 0.8259
+    Neues bestes Modell gespeichert!
+    
+    Epoch 3/20
+    ----------
+    train Loss: 0.5047 Acc: 0.8142 Precision: 0.8144 F1-Score: 0.8141
+    val Loss: 0.5006 Acc: 0.8261 Precision: 0.8368 F1-Score: 0.8285
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 4/20
+    ----------
+    train Loss: 0.4009 Acc: 0.8531 Precision: 0.8533 F1-Score: 0.8531
+    val Loss: 0.5320 Acc: 0.8214 Precision: 0.8301 F1-Score: 0.8244
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 5/20
+    ----------
+    train Loss: 0.3535 Acc: 0.8704 Precision: 0.8707 F1-Score: 0.8705
+    val Loss: 0.5757 Acc: 0.7989 Precision: 0.8367 F1-Score: 0.8099
+    Keine Verbesserung seit 3 Epoche(n).
+    
+    Epoch 6/20
+    ----------
+    train Loss: 0.2532 Acc: 0.9076 Precision: 0.9077 F1-Score: 0.9076
+    val Loss: 0.5220 Acc: 0.8369 Precision: 0.8412 F1-Score: 0.8377
+    Neues bestes Modell gespeichert!
+    
+    Epoch 7/20
+    ----------
+    train Loss: 0.2024 Acc: 0.9312 Precision: 0.9312 F1-Score: 0.9312
+    val Loss: 0.5460 Acc: 0.8473 Precision: 0.8399 F1-Score: 0.8418
+    Neues bestes Modell gespeichert!
+    
+    Epoch 8/20
+    ----------
+    train Loss: 0.1929 Acc: 0.9282 Precision: 0.9282 F1-Score: 0.9282
+    val Loss: 0.5530 Acc: 0.8435 Precision: 0.8432 F1-Score: 0.8426
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 9/20
+    ----------
+    train Loss: 0.1510 Acc: 0.9487 Precision: 0.9488 F1-Score: 0.9487
+    val Loss: 0.5701 Acc: 0.8501 Precision: 0.8434 F1-Score: 0.8435
+    Neues bestes Modell gespeichert!
+    
+    Epoch 10/20
+    ----------
+    train Loss: 0.1330 Acc: 0.9521 Precision: 0.9521 F1-Score: 0.9521
+    val Loss: 0.5914 Acc: 0.8581 Precision: 0.8533 F1-Score: 0.8538
+    Neues bestes Modell gespeichert!
+    
+    Epoch 11/20
+    ----------
+    train Loss: 0.1223 Acc: 0.9581 Precision: 0.9581 F1-Score: 0.9581
+    val Loss: 0.6077 Acc: 0.8510 Precision: 0.8441 F1-Score: 0.8455
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 12/20
+    ----------
+    train Loss: 0.1057 Acc: 0.9644 Precision: 0.9644 F1-Score: 0.9644
+    val Loss: 0.6071 Acc: 0.8557 Precision: 0.8480 F1-Score: 0.8496
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 13/20
+    ----------
+    train Loss: 0.0955 Acc: 0.9654 Precision: 0.9654 F1-Score: 0.9654
+    val Loss: 0.5831 Acc: 0.8506 Precision: 0.8450 F1-Score: 0.8465
+    Keine Verbesserung seit 3 Epoche(n).
+    
+    Epoch 14/20
+    ----------
+    train Loss: 0.0895 Acc: 0.9670 Precision: 0.9670 F1-Score: 0.9670
+    val Loss: 0.6080 Acc: 0.8510 Precision: 0.8446 F1-Score: 0.8464
+    Keine Verbesserung seit 4 Epoche(n).
+    
+    Epoch 15/20
+    ----------
+    train Loss: 0.0866 Acc: 0.9707 Precision: 0.9707 F1-Score: 0.9707
+    val Loss: 0.6379 Acc: 0.8553 Precision: 0.8476 F1-Score: 0.8476
+    Keine Verbesserung seit 5 Epoche(n).
+    
+    Early Stopping ausgelöst! Keine Verbesserung der Validation Accuracy über 5 aufeinanderfolgende Epochen.
+    Best Val Acc: 0.8581 Precision: 0.8533 F1-Score: 0.8538
+    
+    Entfriere das gesamte Netzwerk für das Fine-Tuning...
+    Starte Training auf Gerät: cuda für ResNet101 Phase 2 (Full Fine-Tuning)
+    Epoch 1/50
+    ----------
+    train Loss: 0.1052 Acc: 0.9623 Precision: 0.9623 F1-Score: 0.9623
+    val Loss: 0.5617 Acc: 0.8586 Precision: 0.8544 F1-Score: 0.8559
+    Neues bestes Modell gespeichert!
+    
+    Epoch 2/50
+    ----------
+    train Loss: 0.0946 Acc: 0.9685 Precision: 0.9686 F1-Score: 0.9685
+    val Loss: 0.5467 Acc: 0.8586 Precision: 0.8522 F1-Score: 0.8535
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 3/50
+    ----------
+    train Loss: 0.0804 Acc: 0.9710 Precision: 0.9710 F1-Score: 0.9710
+    val Loss: 0.5790 Acc: 0.8586 Precision: 0.8521 F1-Score: 0.8536
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 4/50
+    ----------
+    train Loss: 0.0720 Acc: 0.9762 Precision: 0.9762 F1-Score: 0.9762
+    val Loss: 0.5979 Acc: 0.8600 Precision: 0.8525 F1-Score: 0.8537
+    Neues bestes Modell gespeichert!
+    
+    Epoch 5/50
+    ----------
+    train Loss: 0.0696 Acc: 0.9767 Precision: 0.9767 F1-Score: 0.9767
+    val Loss: 0.5816 Acc: 0.8633 Precision: 0.8566 F1-Score: 0.8578
+    Neues bestes Modell gespeichert!
+    
+    Epoch 6/50
+    ----------
+    train Loss: 0.0597 Acc: 0.9796 Precision: 0.9796 F1-Score: 0.9795
+    val Loss: 0.5860 Acc: 0.8675 Precision: 0.8613 F1-Score: 0.8623
+    Neues bestes Modell gespeichert!
+    
+    Epoch 7/50
+    ----------
+    train Loss: 0.0602 Acc: 0.9805 Precision: 0.9805 F1-Score: 0.9805
+    val Loss: 0.6033 Acc: 0.8618 Precision: 0.8549 F1-Score: 0.8558
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 8/50
+    ----------
+    train Loss: 0.0541 Acc: 0.9828 Precision: 0.9828 F1-Score: 0.9828
+    val Loss: 0.6053 Acc: 0.8618 Precision: 0.8546 F1-Score: 0.8549
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 9/50
+    ----------
+    train Loss: 0.0538 Acc: 0.9832 Precision: 0.9832 F1-Score: 0.9832
+    val Loss: 0.6081 Acc: 0.8628 Precision: 0.8554 F1-Score: 0.8556
+    Keine Verbesserung seit 3 Epoche(n).
+    
+    Epoch 10/50
+    ----------
+    train Loss: 0.0474 Acc: 0.9858 Precision: 0.9858 F1-Score: 0.9858
+    val Loss: 0.5934 Acc: 0.8651 Precision: 0.8583 F1-Score: 0.8589
+    Keine Verbesserung seit 4 Epoche(n).
+    
+    Epoch 11/50
+    ----------
+    train Loss: 0.0479 Acc: 0.9832 Precision: 0.9833 F1-Score: 0.9832
+    val Loss: 0.6090 Acc: 0.8637 Precision: 0.8570 F1-Score: 0.8568
+    Keine Verbesserung seit 5 Epoche(n).
+    
+    Epoch 12/50
+    ----------
+    train Loss: 0.0486 Acc: 0.9834 Precision: 0.9834 F1-Score: 0.9834
+    val Loss: 0.5906 Acc: 0.8651 Precision: 0.8582 F1-Score: 0.8591
+    Keine Verbesserung seit 6 Epoche(n).
+    
+    Epoch 13/50
+    ----------
+    train Loss: 0.0470 Acc: 0.9855 Precision: 0.9855 F1-Score: 0.9855
+    val Loss: 0.5988 Acc: 0.8628 Precision: 0.8558 F1-Score: 0.8567
+    Keine Verbesserung seit 7 Epoche(n).
+    
+    Epoch 14/50
+    ----------
+    train Loss: 0.0475 Acc: 0.9848 Precision: 0.9848 F1-Score: 0.9848
+    val Loss: 0.5906 Acc: 0.8694 Precision: 0.8636 F1-Score: 0.8642
+    Neues bestes Modell gespeichert!
+    
+    Epoch 15/50
+    ----------
+    train Loss: 0.0467 Acc: 0.9842 Precision: 0.9842 F1-Score: 0.9842
+    val Loss: 0.5972 Acc: 0.8656 Precision: 0.8590 F1-Score: 0.8602
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 16/50
+    ----------
+    train Loss: 0.0482 Acc: 0.9840 Precision: 0.9841 F1-Score: 0.9840
+    val Loss: 0.6102 Acc: 0.8642 Precision: 0.8580 F1-Score: 0.8583
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 17/50
+    ----------
+    train Loss: 0.0494 Acc: 0.9840 Precision: 0.9840 F1-Score: 0.9840
+    val Loss: 0.5971 Acc: 0.8670 Precision: 0.8611 F1-Score: 0.8622
+    Keine Verbesserung seit 3 Epoche(n).
+    
+    Epoch 18/50
+    ----------
+    train Loss: 0.0459 Acc: 0.9843 Precision: 0.9843 F1-Score: 0.9843
+    val Loss: 0.5890 Acc: 0.8684 Precision: 0.8625 F1-Score: 0.8640
+    Keine Verbesserung seit 4 Epoche(n).
+    
+    Epoch 19/50
+    ----------
+    train Loss: 0.0440 Acc: 0.9856 Precision: 0.9856 F1-Score: 0.9856
+    val Loss: 0.5912 Acc: 0.8647 Precision: 0.8585 F1-Score: 0.8596
+    Keine Verbesserung seit 5 Epoche(n).
+    
+    Epoch 20/50
+    ----------
+    train Loss: 0.0411 Acc: 0.9855 Precision: 0.9855 F1-Score: 0.9855
+    val Loss: 0.6117 Acc: 0.8642 Precision: 0.8571 F1-Score: 0.8579
+    Keine Verbesserung seit 6 Epoche(n).
+    
+    Epoch 21/50
+    ----------
+    train Loss: 0.0445 Acc: 0.9850 Precision: 0.9850 F1-Score: 0.9850
+    val Loss: 0.6046 Acc: 0.8670 Precision: 0.8606 F1-Score: 0.8615
+    Keine Verbesserung seit 7 Epoche(n).
+    
+    Epoch 22/50
+    ----------
+    train Loss: 0.0432 Acc: 0.9847 Precision: 0.9847 F1-Score: 0.9847
+    val Loss: 0.6074 Acc: 0.8656 Precision: 0.8588 F1-Score: 0.8594
+    Keine Verbesserung seit 8 Epoche(n).
+    
+    Epoch 23/50
+    ----------
+    train Loss: 0.0445 Acc: 0.9852 Precision: 0.9852 F1-Score: 0.9852
+    val Loss: 0.6060 Acc: 0.8642 Precision: 0.8574 F1-Score: 0.8584
+    Keine Verbesserung seit 9 Epoche(n).
+    
+    Epoch 24/50
+    ----------
+    train Loss: 0.0456 Acc: 0.9856 Precision: 0.9856 F1-Score: 0.9856
+    val Loss: 0.6164 Acc: 0.8651 Precision: 0.8586 F1-Score: 0.8589
+    Keine Verbesserung seit 10 Epoche(n).
+    
+    Early Stopping ausgelöst! Keine Verbesserung der Validation Accuracy über 10 aufeinanderfolgende Epochen.
+    Best Val Acc: 0.8694 Precision: 0.8636 F1-Score: 0.8642
+    
 
 ## 5. Vortrainierte Modelle laden
 Hier laden wir die Gewichte der fertig trainierten Modelle (.pth oder .pt Dateien). Dies ermöglicht eine exakte Reproduzierbarkeit der späteren Erklärungsgenerierung, ohne das Modell jedes Mal neu trainieren zu müssen.
@@ -623,9 +1382,9 @@ loaded_data_mobilenetv3 = torch.load(MODEL_MOBILE_NET_V3_FILE_PATH)
 mobileNetV3Model.load_state_dict(loaded_data_mobilenetv3)
 ```
 
-    C:\Users\jalle\AppData\Local\Temp\ipykernel_24680\2924343579.py:1: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+    C:\Users\jalle\AppData\Local\Temp\ipykernel_3760\2924343579.py:1: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
       loaded_data_resnet101 = torch.load(MODEL_RESNET101_FILE_PATH)
-    C:\Users\jalle\AppData\Local\Temp\ipykernel_24680\2924343579.py:4: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+    C:\Users\jalle\AppData\Local\Temp\ipykernel_3760\2924343579.py:4: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
       loaded_data_mobilenetv3 = torch.load(MODEL_MOBILE_NET_V3_FILE_PATH)
     
 
@@ -690,6 +1449,9 @@ def evaluateTestData(model, title):
     # 3. Confusion Matrix
     print(f"Erstelle Confusion Matrix für {title}...")
     cm = confusion_matrix(all_labels, all_preds)
+    print(repr(cm))
+    
+    print("\n" + "="*40 + "\n")
     
     # Visualisierung der Confusion Matrix mit Seaborn
     plt.figure(figsize=(10, 8))
@@ -711,63 +1473,129 @@ evaluateTestData(mobileNetV3Model, "MobileNetV3")
     Starte Evaluation für ResNet101 auf dem Testdatensatz...
     
     === Gesamtergebnis für ResNet101 ===
-    Test Accuracy: 0.8609 (86.09%)
+    Test Accuracy: 0.8743 (87.43%)
     
     === Detaillierter Klassifikationsbericht ===
                   precision    recall  f1-score   support
     
-           akiec     0.7400    0.7551    0.7475        49
-             bcc     0.8594    0.7143    0.7801        77
-             bkl     0.7748    0.7091    0.7405       165
-              df     0.7500    0.7059    0.7273        17
-             mel     0.6601    0.6048    0.6312       167
-              nv     0.9078    0.9493    0.9281      1006
-            vasc     1.0000    0.7727    0.8718        22
+           akiec     0.7308    0.7755    0.7525        49
+             bcc     0.8101    0.8312    0.8205        77
+             bkl     0.7857    0.7333    0.7586       165
+              df     0.8571    0.7059    0.7742        17
+             mel     0.7615    0.5928    0.6667       167
+              nv     0.9118    0.9553    0.9330      1006
+            vasc     0.9500    0.8636    0.9048        22
     
-        accuracy                         0.8609      1503
-       macro avg     0.8132    0.7445    0.7752      1503
-    weighted avg     0.8573    0.8609    0.8579      1503
+        accuracy                         0.8743      1503
+       macro avg     0.8296    0.7797    0.8015      1503
+    weighted avg     0.8701    0.8743    0.8704      1503
     
     Erstelle Confusion Matrix für ResNet101...
+    array([[ 38,   2,   4,   0,   2,   3,   0],
+           [  3,  64,   4,   1,   1,   4,   0],
+           [  8,   3, 121,   0,   5,  28,   0],
+           [  0,   1,   1,  12,   0,   3,   0],
+           [  1,   2,   9,   1,  99,  55,   0],
+           [  2,   6,  14,   0,  22, 961,   1],
+           [  0,   1,   1,   0,   1,   0,  19]], dtype=int64)
+    
+    ========================================
+    
     
 
 
     
-![png](output_32_1.png)
+![png](output_36_1.png)
     
 
 
     Starte Evaluation für MobileNetV3 auf dem Testdatensatz...
     
     === Gesamtergebnis für MobileNetV3 ===
-    Test Accuracy: 0.8609 (86.09%)
+    Test Accuracy: 0.8323 (83.23%)
     
     === Detaillierter Klassifikationsbericht ===
                   precision    recall  f1-score   support
     
-           akiec     0.7500    0.7959    0.7723        49
-             bcc     0.8485    0.7273    0.7832        77
-             bkl     0.7308    0.8061    0.7666       165
-              df     0.7368    0.8235    0.7778        17
-             mel     0.6475    0.5389    0.5882       167
-              nv     0.9208    0.9364    0.9285      1006
-            vasc     0.9091    0.9091    0.9091        22
+           akiec     0.6591    0.5918    0.6237        49
+             bcc     0.6883    0.6883    0.6883        77
+             bkl     0.6500    0.7091    0.6783       165
+              df     0.8182    0.5294    0.6429        17
+             mel     0.6357    0.5329    0.5798       167
+              nv     0.9070    0.9304    0.9185      1006
+            vasc     0.9474    0.8182    0.8780        22
     
-        accuracy                         0.8609      1503
-       macro avg     0.7919    0.7910    0.7894      1503
-    weighted avg     0.8581    0.8609    0.8584      1503
+        accuracy                         0.8323      1503
+       macro avg     0.7579    0.6857    0.7156      1503
+    weighted avg     0.8289    0.8323    0.8294      1503
     
     Erstelle Confusion Matrix für MobileNetV3...
+    array([[ 29,   5,  11,   0,   3,   1,   0],
+           [  2,  53,   6,   1,   5,   9,   1],
+           [  9,   5, 117,   1,   7,  26,   0],
+           [  0,   4,   0,   9,   1,   3,   0],
+           [  3,   2,  18,   0,  89,  55,   0],
+           [  1,   8,  27,   0,  34, 936,   0],
+           [  0,   0,   1,   0,   1,   2,  18]], dtype=int64)
+    
+    ========================================
+    
     
 
 
     
-![png](output_32_3.png)
+![png](output_36_3.png)
     
 
 
 ## 7. XAI
 Dies ist der methodische Kern des Notebooks. Die zuvor validierten Black-Box-Modelle werden nun mithilfe zweier konzeptionell gegensätzlicher XAI-Methoden durchleuchtet. Das Ziel ist es, die generierten Heatmaps nicht nur visuell zu betrachten, sondern objektiv und quantitativ zu messen.
+
+### Methode zum Erstellen der XAI-Evaluations-True-Positive-Bilder
+Warum Metriken (wie IROF) auf True Positives beschränkt werden sollten: Wenn man quantitativ messen will, ob Grad-CAM oder LIME die bessere Methode ist, müssen Sie die Fehlerhaftigkeit des neuronalen Netzes von der Fehlerhaftigkeit der XAI-Methode trennen. Wenn ein Modell eine komplett falsche Vorhersage trifft (False Negative oder False Positive), ist die zugrunde liegende Entscheidung per se inkorrekt. Wenn Grad-CAM nun bei einem übersehenen Melanom auf einen völlig irrelevanten Hautbereich zeigt, ist es mathematisch unmöglich zu trennen, ob Grad-CAM als Erklärungsmethode versagt hat, oder ob das Modell bei diesem Bild schlichtweg unsinnige Merkmale gelernt hat. (Zou et al. (2023))
+
+
+```python
+def get_xai_loader(model, num_images=60):
+    """
+    Erstellt einen DataLoader mit exakt 'num_images' True Positives für ein spezifisches Modell.
+    """
+    model.eval()
+    tp_indices = []
+    all_targets = []
+        
+    with torch.no_grad():
+        for batch_idx, (inputs, targets) in enumerate(test_loader):
+            inputs, targets = inputs.to(device), targets.to(device)
+            
+            # Vorhersage des Modells
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs, 1)
+            
+            # Finde Indizes, wo Vorhersage == Wahrheit (True Positives)
+            matches = (predicted == targets).cpu().numpy()
+            
+            # Speichere die globalen Indizes des Datasets und die dazugehörigen Labels
+            start_idx = batch_idx * test_loader.batch_size
+            for i, match in enumerate(matches):
+                if match:
+                    tp_indices.append(start_idx + i)
+                    all_targets.append(targets[i].item())
+
+    # Ziehe exakt 60 Bilder (stratifiziert, falls möglich)
+    xai_indices, _ = train_test_split(
+        tp_indices, 
+        train_size=num_images, 
+        stratify=all_targets, 
+        random_state=42 # Fixer Seed für Reproduzierbarkeit
+    )
+
+    # Erstelle ein PyTorch Subset aus den originalen Testdaten
+    xai_dataset = Subset(test_dataset, xai_indices)
+    
+    # Erstelle den finalen DataLoader (Batch-Size entspricht oft num_images für die Quantus-Metriken)
+    return DataLoader(xai_dataset, batch_size=num_images, shuffle=False)
+```
 
 ### Definiere Quantus-Metriken
 Für die objektive Bewertung der XAI-Verfahren nutzen wir das Quantus-Framework. Wir definieren hier Metriken zur Evaluation der Robustheit (Stabilität der Erklärung bei minimalen Bildstörungen) und der Erklärungstreue / Faithfulness (wie präzise die Erklärung den wahren Modellentscheidungsprozess widerspiegelt, z. B. durch iteratives Entfernen wichtiger Pixel).
@@ -991,8 +1819,6 @@ def evaluateGradCAM(model, x_batch, y_batch, model_target_layer):
 ### Evaluiere XAI mit Quantus-Metriken
 In dieser finalen Evaluationsschleife werden Grad-CAM und LIME auf einer gezielten Stichprobe des Testdatensatzes angewendet. Es wird berechnet, welches Grundkonzept – Gradienten oder Perturbation – auf dem jeweiligen Modell (ResNet vs. MobileNet) die treueren und robusteren Erklärungen liefert und wie sich der signifikante Unterschied im Rechenaufwand verhält.
 
-
-```python
 def get_eval_data(dataloader, num_samples):
     """Zieht exakt num_samples Bilder am Stück aus dem Dataloader."""
     x_list, y_list = [], []
@@ -1020,11 +1846,13 @@ def evaluateXai(model, target_layer, title, max_gradcam=32, max_lime=10):
     
     # 1. Datenbeschaffung
     # Bilder aufteilen (LIME testet exakt dieselben ersten Bilder wie Grad-CAM)
+    xai_image_loader = get_xai_loader(model)
     print(f"Lade {max_gradcam} Bilder aus dem Test-Loader für Grad-CAM...")
-    x_gradcam, y_gradcam = get_eval_data(xai_loader, max_gradcam)
+    
+    x_gradcam, y_gradcam = get_eval_data(xai_image_loader, max_gradcam)
 
     print(f"Lade {max_lime} Bilder aus dem Test-Loader für Lime...")
-    x_lime, y_lime = get_eval_data(xai_loader, max_lime)
+    x_lime, y_lime = get_eval_data(xai_image_loader, max_lime)
     
     # 2. Grad-CAM Evaluierung (Alles in einem Rutsch)
     print(f"\n-> Evaluiere Grad-CAM ({len(x_gradcam)} Bilder)...")
@@ -1040,137 +1868,80 @@ def evaluateXai(model, target_layer, title, max_gradcam=32, max_lime=10):
     print(f"\nEvaluation für {title} abgeschlossen!")
 
 # Aufruf: GradCam und Lime später mit 60 Bildern. Das ist sehr Zeitintensiv (für Lime > 12 Std. mal 2 für Resnet und MobileNet)
-evaluateXai(resNet101Model, resNet101Model.layer4[-1], "ResNet101", max_gradcam=60, max_lime=10)
-evaluateXai(mobileNetV3Model, mobileNetV3Model.features[-1], "MobileNetV3", max_gradcam=60, max_lime=10)
+evaluateXai(resNet101Model, resNet101Model.layer4[-1], "ResNet101", max_gradcam=32, max_lime=32)
+evaluateXai(mobileNetV3Model, mobileNetV3Model.features[-1], "MobileNetV3", max_gradcam=32, max_lime=32)
+
+### Zeiten messen für Grad-CAM und LIME
+
+
+```python
+def measure_xai_performance(model, img, target, target_layer, iterations=10):
+    # Vorbereitung der Explainer
+    gradcam_func = get_gradcam_explainer(model, target_layer)
+    # Falls du einen LIME-Explainer hast, hier definieren:
+    lime_explainer = get_lime_explainer(model)
+    
+    gradcam_times = []
+    lime_times = []
+
+    print(f"Starte Benchmark ({iterations} Durchläufe)...")
+
+    for i in range(iterations):
+        # --- Messung Grad-CAM ---
+        start = time.perf_counter()
+        _ = gradcam_func(model, img, target)
+        end = time.perf_counter()
+        gradcam_times.append(end - start)
+        
+        # --- Messung LIME (Beispielhafter Aufruf) ---
+        start = time.perf_counter()
+        _ = lime_explainer(model, img, target)
+        end = time.perf_counter()
+        lime_times.append(end - start)
+        
+        print(f"Durchlauf {i+1}/{iterations} abgeschlossen.", end="\r")
+
+    # Statistiken berechnen
+    gc_mean = np.mean(gradcam_times)
+    gc_std = np.std(gradcam_times)
+    
+    print(f"\n\nErgebnisse für Grad-CAM:")
+    print(f"Mittelwert: {gc_mean:.4f} Sekunden")
+    print(f"Standardabweichung: {gc_std:.4f} Sekunden\n")
+
+    print(f"{'='*40}")
+
+    lime_mean = np.mean(lime_times)
+    lime_std = np.std(lime_times)
+    print(f"\nErgebnisse für LIME:")
+    print(f"Mittelwert: {lime_mean:.4f} Sekunden")
+    print(f"Standardabweichung: {lime_std:.4f} Sekunden")
+
+img_idx=1
+xai_mobilenet_image_loader = get_xai_loader(mobileNetV3Model)
+data_iter = iter(xai_mobilenet_image_loader)
+images, labels = next(data_iter)
+input_img = images[img_idx: img_idx+1].to(device)
+target = labels[img_idx: img_idx+1].to(device)
+
+measure_xai_performance(mobileNetV3Model, input_img, target, mobileNetV3Model.features[-1])
 ```
 
+    Starte Benchmark (10 Durchläufe)...
+    Durchlauf 10/10 abgeschlossen.
     
+    Ergebnisse für Grad-CAM:
+    Mittelwert: 0.0113 Sekunden
+    Standardabweichung: 0.0014 Sekunden
     ========================================
-    Starte Evaluation - ResNet101
-    ========================================
-    Lade 60 Bilder aus dem Test-Loader für Grad-CAM...
-    Lade 10 Bilder aus dem Test-Loader für Lime...
     
-    -> Evaluiere Grad-CAM (60 Bilder)...
-    ------------------------------
-    Evaluate Grad-CAM metric...
-      -> Running metric: Faithfulness
+    
+    Ergebnisse für LIME:
+    Mittelwert: 37.8305 Sekunden
+    Standardabweichung: 0.9381 Sekunden
     
 
-    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
-      warnings.warn(
-    
-
-        Dauer: 45.82s
-        Statistik: Mean: -54404.0977 | Std: 418103.6122 | Min: -3265918.5124 | Max: 96.4910
-        Einzel-Scores: [84.7631, 87.8961, 57.0491, 38.5585, 87.0967, 47.3351, 64.8685, 86.2504, 7.3488, 54.1460, 48.1408, 94.8144, 92.1089, 89.6047, 36.1775, 37.5969, -24.5231, 92.0068, 84.5923, 91.6171, 54.4481, -128.7446, 62.3471, 92.4045, 90.8645, 83.4114, 65.1108, 81.7638, 91.6296, 82.7585, 91.1464, 96.4910, 51.2304, -4.4153, 90.3803, 70.4182, 30.8279, 95.0723, 52.6756, -1369.2642, 25.0313, 40.5829, 48.9712, 90.8415, 32.1951, 88.0493, 44.3228, 80.4122, 70.0914, -525.2963, -3265918.5124, 55.5299, 64.7634, 90.7908, 92.4429, 59.5654, 82.2642, 51.8822, 83.8915, 58.3114]
-    
-      -> Running metric: Robustness
-        Dauer: 31.93s
-        Statistik: Mean: 0.4133 | Std: 0.1287 | Min: 0.2197 | Max: 0.9952
-        Einzel-Scores: [0.3024, 0.2901, 0.3102, 0.5668, 0.4535, 0.4384, 0.3734, 0.2829, 0.4570, 0.2783, 0.3851, 0.5087, 0.2197, 0.2831, 0.4783, 0.3499, 0.7511, 0.3974, 0.2440, 0.4094, 0.4345, 0.5129, 0.3928, 0.3304, 0.4157, 0.3355, 0.3046, 0.6950, 0.4436, 0.3718, 0.4019, 0.5080, 0.3407, 0.4194, 0.3471, 0.4514, 0.4511, 0.3381, 0.4472, 0.4756, 0.5278, 0.4261, 0.4778, 0.2895, 0.4628, 0.9952, 0.3526, 0.3700, 0.3315, 0.2817, 0.6074, 0.3843, 0.4021, 0.3331, 0.2577, 0.5857, 0.3476, 0.4976, 0.3522, 0.3211]
-    
-    
-    -> Evaluiere LIME (10 Bilder)...
-    ------------------------------
-    Evaluate LIME metric...
-      -> Running metric: Faithfulness
-    
-
-    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
-      warnings.warn(
-    
-
-        Dauer: 543.02s
-        Statistik: Mean: 77.3812 | Std: 13.0795 | Min: 49.6401 | Max: 90.8717
-        Einzel-Scores: [90.6259, 90.8717, 75.7024, 61.1693, 89.9863, 78.0397, 73.5713, 89.1622, 49.6401, 75.0427]
-    
-      -> Running metric: Robustness
-        Dauer: 11101.93s
-        Statistik: Mean: 0.9187 | Std: 0.1404 | Min: 0.6335 | Max: 1.1456
-        Einzel-Scores: [0.8294, 0.6335, 1.1456, 1.0557, 0.8589, 0.8216, 0.8596, 1.0328, 0.9452, 1.0044]
-    
-    
-
-
-    
-![png](output_44_5.png)
-    
-
-
-
-    
-![png](output_44_6.png)
-    
-
-
-    
-    Evaluation für ResNet101 abgeschlossen!
-    
-    ========================================
-    Starte Evaluation - MobileNetV3
-    ========================================
-    Lade 60 Bilder aus dem Test-Loader für Grad-CAM...
-    Lade 10 Bilder aus dem Test-Loader für Lime...
-    
-    -> Evaluiere Grad-CAM (60 Bilder)...
-    ------------------------------
-    Evaluate Grad-CAM metric...
-      -> Running metric: Faithfulness
-    
-
-    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
-      warnings.warn(
-    
-
-        Dauer: 22.47s
-        Statistik: Mean: 51.3493 | Std: 32.1794 | Min: -35.9837 | Max: 97.6987
-        Einzel-Scores: [67.6284, 4.5181, 31.6453, 4.7831, 63.1065, 18.3806, 25.7831, 82.3433, 23.3823, 32.1785, 17.8243, 94.9891, 92.5804, 47.4636, 18.7255, 35.3163, 81.1230, 93.4186, 85.8677, 61.1624, 7.9764, 25.8328, 38.0820, 16.2917, 85.7440, 85.9906, 6.0825, 75.0587, 28.1208, 4.9261, 15.8995, 97.6987, 53.2942, 14.3095, 94.0264, 79.4283, 39.9741, 93.3917, 94.9423, 36.9069, 39.5320, 95.7582, 46.6077, 85.3951, 70.1496, 57.2992, 83.3937, 81.5449, 67.9211, -35.9837, 86.7150, 23.4412, 35.4940, 89.3522, 74.8694, 7.2738, 38.6147, 41.4633, 56.4482, 59.4697]
-    
-      -> Running metric: Robustness
-        Dauer: 29.04s
-        Statistik: Mean: 0.3059 | Std: 0.1438 | Min: 0.1020 | Max: 0.6304
-        Einzel-Scores: [0.1937, 0.4959, 0.6304, 0.3149, 0.4989, 0.5078, 0.3436, 0.1834, 0.4634, 0.4648, 0.1276, 0.2389, 0.3513, 0.1608, 0.6086, 0.5229, 0.3387, 0.1604, 0.4232, 0.3431, 0.2934, 0.1494, 0.3280, 0.3040, 0.1801, 0.1680, 0.3287, 0.2945, 0.4538, 0.5814, 0.2955, 0.2794, 0.1282, 0.1785, 0.2335, 0.1464, 0.4651, 0.1314, 0.1331, 0.3310, 0.3645, 0.2599, 0.4510, 0.1020, 0.3114, 0.6130, 0.2529, 0.1100, 0.1851, 0.1466, 0.3359, 0.3744, 0.3696, 0.1484, 0.1645, 0.2805, 0.1690, 0.3238, 0.1291, 0.4872]
-    
-    
-    -> Evaluiere LIME (10 Bilder)...
-    ------------------------------
-    Evaluate LIME metric...
-      -> Running metric: Faithfulness
-    
-
-    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
-      warnings.warn(
-    
-
-        Dauer: 287.93s
-        Statistik: Mean: 61.8265 | Std: 23.7969 | Min: 25.1498 | Max: 91.1801
-        Einzel-Scores: [88.7460, 25.1498, 26.6936, 62.7499, 84.7520, 58.7787, 44.6557, 91.1801, 50.5214, 85.0379]
-    
-      -> Running metric: Robustness
-        Dauer: 6166.21s
-        Statistik: Mean: 0.8721 | Std: 0.2071 | Min: 0.6830 | Max: 1.3595
-        Einzel-Scores: [0.9564, 0.7455, 0.6959, 0.8887, 0.7480, 0.7225, 0.6830, 1.3595, 0.8061, 1.1149]
-    
-    
-
-
-    
-![png](output_44_12.png)
-    
-
-
-
-    
-![png](output_44_13.png)
-    
-
-
-    
-    Evaluation für MobileNetV3 abgeschlossen!
-    
-
-## 8. Visualisierung eines Beispielbildes
+## 8. Heatmap-Visualisierung eines Beispielbildes
 Um die berechneten quantitativen Metriken in einen praktischen Kontext zu setzen, werden in diesem Schritt die originalen Eingabebilder gemeinsam mit den generierten Heatmaps von LIME und Grad-CAM nebeneinander geplottet. Dies veranschaulicht visuell den Unterschied zwischen der feingranularen gradientenbasierten Segmentierung und der gröberen superpixel-basierten Maskierung der Modelle.
 
 
@@ -1187,7 +1958,7 @@ def visualize_explanations(model, images, labels, target_layer, title, img_idx=0
     # Farben für Matplotlib in den Bereich [0, 1] zwingen
     img_for_plot = (img_for_plot - img_for_plot.min()) / (img_for_plot.max() - img_for_plot.min() + 1e-8)
     # ----------------------------
-    
+
     # 2. Erklärungen generieren
     # --- Grad-CAM ---
     gradcam_func = get_gradcam_explainer(model, target_layer)
@@ -1200,7 +1971,7 @@ def visualize_explanations(model, images, labels, target_layer, title, img_idx=0
     attr_lime = np.expand_dims(attr_lime, axis=-1)
     
     # 3. Visualisierung
-    fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+    fig, axs = plt.subplots(1, 3, figsize=(20, 5))
     fig.suptitle(f"XAI Evaluation für ein Testbild: {title}", fontsize=16, fontweight='bold', y=1.05)
     
     # Originalbild plotten
@@ -1225,18 +1996,312 @@ def visualize_explanations(model, images, labels, target_layer, title, img_idx=0
     plt.show()
 
 
-data_iter = iter(xai_loader)
-images, labels = next(data_iter)
-
-# Um sicher zu gehen, dass die Modelle auf dem korrekten device sind.
 resNet101Model.to(device)
 mobileNetV3Model.to(device)
+
+# Bilder nur aus dem MobileNetV3Loader nehmen, sodass für Resnet101 und MobileNetBV3 die gleichen Bilder verwendet werden.
+xai_mobilenet_image_loader = get_xai_loader(mobileNetV3Model)
+data_iter = iter(xai_mobilenet_image_loader)
+images, labels = next(data_iter)
 
 visualize_explanations(resNet101Model, images, labels, resNet101Model.layer4[-1], "ResNet101", 3)
 visualize_explanations(mobileNetV3Model, images, labels, mobileNetV3Model.features[-1],"MobileNetV3", 3)
 
 
 ```
+
+
+    
+![png](output_54_0.png)
+    
+
+
+
+    
+![png](output_54_1.png)
+    
+
+
+### Beispiel Segmentierung für IROF
+
+
+```python
+img_idx = 3
+xai_mobilenet_image_loader = get_xai_loader(mobileNetV3Model)
+data_iter = iter(xai_mobilenet_image_loader)
+images, labels = next(data_iter)
+
+img_tensor = images[img_idx]
+img_np = img_tensor.cpu().numpy()
+img = np.transpose(img_np, (1, 2, 0))
+img = (img - img.min()) / (img.max() - img.min())
+
+model = mobileNetV3Model.to(device)
+model.eval()
+
+global_mean_color = img.mean(axis=(0, 1))
+
+# Superpixel-Segmentierung (SLIC)
+# n_segments definiert die ungefähre Anzahl der Superpixel
+segments = slic(img, n_segments=60, compactness=15, sigma=1, start_label=1)
+
+# Simulation der Relevanz (XAI-Methode) & Maskierung
+# Wir berechnen den Abstand jedes Segments zum Zentrum.
+segment_ids = np.unique(segments)
+relevance_scores = []
+for seg_id in segment_ids:
+    coords = np.column_stack(np.where(segments == seg_id))
+    center_y, center_x = coords.mean(axis=0)
+    dist_to_center = np.sqrt((center_x - 112)**2 + (center_y - 112)**2)
+    relevance_scores.append(-dist_to_center) # Näher am Zentrum = höhere Relevanz
+
+# Sortieren der Segmente nach Relevanz (absteigend)
+sorted_seg_indices = np.argsort(relevance_scores)[::-1]
+sorted_segments = segment_ids[sorted_seg_indices]
+
+# Maskieren der Top 30% der relevantesten Segmente mit dem globalen Mean
+# (Mean Imputation nach Rieger & Hansen, 2020)
+masked_img = img.copy()
+global_mean_color = img.mean(axis=(0, 1))
+num_to_mask = int(len(segment_ids) * 0.03)
+
+top_segments_to_mask = sorted_segments[:num_to_mask]
+for seg_id in top_segments_to_mask:
+    masked_img[segments == seg_id] = global_mean_color
+
+# ==========================================
+# 4. Simulation der AOC-Kurve (Modell-Konfidenz)
+# ==========================================
+fractions = np.linspace(0, 1, 10)
+
+# ==========================================
+# 5. Plotten der Schematischen Abbildung
+# ==========================================
+fig, axes = plt.subplots(1, 2, figsize=(18, 5))
+plt.rcParams.update({'font.size': 12})
+
+# Plot 1: Originalbild mit Superpixeln
+img_with_boundaries = mark_boundaries(img, segments, color=(1, 1, 0), mode='thick')
+axes[0].imshow(img_with_boundaries)
+axes[0].set_title("1. Segmentierung (SLIC)", fontweight='bold')
+axes[0].axis('off')
+
+# Plot 2: Iterative Maskierung (Mean Imputation)
+axes[1].imshow(masked_img)
+axes[1].set_title("2. Maskierung relevanter Segmente", fontweight='bold')
+axes[1].axis('off')
+
+# Layout optimieren und anzeigen
+plt.tight_layout()
+plt.show()
+```
+
+
+    
+![png](output_56_0.png)
+    
+
+
+## Visualisierung wie sich leichtes Racuhen auf das Ergebnis auswirkt
+
+
+```python
+# Bild mit rauschen erstellen!
+def plot_gradcam_instability(model, images, labels, target_layer, img_idx=0, noise_std=0.1):
+    """
+    Erstellt ein Vorher-Nachher-Bild, das die Instabilität von Grad-CAM bei Rauschen zeigt.
+    noise_std: Standardabweichung des Rauschens (je höher, desto stärker die Störung).
+    """
+    # 1. Daten vorbereiten (1 Bild auswählen)
+    input_img = images[img_idx: img_idx+1].to(device)
+    target = labels[img_idx: img_idx+1].to(device)
+    
+    # 2. Minimales, kaum wahrnehmbares Rauschen hinzufügen (Gaussian Noise)
+    # Entspricht methodisch Alvarez-Melis & Jaakkola (2018)
+    noise = torch.randn_like(input_img) * noise_std
+    noisy_img = input_img + noise
+    
+    # 3. Bilder für Matplotlib skalieren (Min-Max Normalisierung für den Plot)
+    img_orig_plot = input_img.detach().cpu().squeeze(0).permute(1, 2, 0).numpy()
+    img_orig_plot = (img_orig_plot - img_orig_plot.min()) / (img_orig_plot.max() - img_orig_plot.min() + 1e-8)
+    
+    img_noisy_plot = noisy_img.detach().cpu().squeeze(0).permute(1, 2, 0).numpy()
+    img_noisy_plot = (img_noisy_plot - img_noisy_plot.min()) / (img_noisy_plot.max() - img_noisy_plot.min() + 1e-8)
+    
+    # 4. Erklärungen (Heatmaps) generieren
+    model.eval()
+    gradcam_func = get_gradcam_explainer(model, target_layer)
+    
+    # Original Heatmap
+    attr_orig = gradcam_func(model, input_img, target)
+    if isinstance(attr_orig, torch.Tensor): # Falls es doch mal ein Tensor ist
+        attr_orig = attr_orig.squeeze(0).cpu().permute(1, 2, 0).detach().numpy()
+    else: # Wenn es (wie im Fehler) bereits ein Numpy-Array ist
+        attr_orig = np.squeeze(attr_orig, axis=0)
+        attr_orig = np.transpose(attr_orig, (1, 2, 0))
+    
+    # Gestörte Heatmap (für das verrauschte Bild)
+    attr_noisy = gradcam_func(model, noisy_img, target)
+    if isinstance(attr_noisy, torch.Tensor):
+        attr_noisy = attr_noisy.squeeze(0).cpu().permute(1, 2, 0).detach().numpy()
+    else:
+        attr_noisy = np.squeeze(attr_noisy, axis=0)
+        attr_noisy = np.transpose(attr_noisy, (1, 2, 0))
+    
+    # 5. Visualisierung im gewünschten 3-Spalten-Layout
+    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+    fig.suptitle("Instabilität von Grad-CAM gegenüber minimalem Rauschen", fontsize=18, fontweight='bold', y=1.05)
+    
+    # Spalte 1: Originalbild + saubere Heatmap
+    viz.visualize_image_attr(
+        attr_orig, img_orig_plot, method="blended_heat_map", sign="positive",
+        show_colorbar=False, use_pyplot=False, 
+        title="Originalbild\n+ saubere Heatmap", plt_fig_axis=(fig, axs[0])
+    )
+    
+    # Spalte 2: Das "+" Zeichen und das Kästchen (KORRIGIERT auf axs[1])
+    axs[1].axis('off')
+    axs[1].text(0.5, 0.5, '+\n\nMinimales,\nkaum wahrnehmbares\nRauschen', 
+                fontsize=16, ha='center', va='center', fontweight='bold',
+                bbox=dict(boxstyle="round,pad=1.5", fc="#f0f0f0", ec="#333333", lw=2))
+    
+    # Spalte 3: Gestörtes Bild + zerschossene Heatmap (KORRIGIERT auf axs[2])
+    viz.visualize_image_attr(
+        attr_noisy, img_noisy_plot, method="blended_heat_map", sign="positive",
+        show_colorbar=False, use_pyplot=False, 
+        title="Gestörtes Bild\n+ verschobene Heatmap", plt_fig_axis=(fig, axs[2])
+    )
+    
+    plt.tight_layout()
+    plt.show()
+
+# Aufruf der Funktion (Beispiel für Ihr ResNet101):
+data_iter = iter(xai_mobilenet_image_loader)
+images, labels = next(data_iter)
+plot_gradcam_instability(resNet101Model, images, labels, resNet101Model.layer4[-1], 0)
+```
+
+
+    
+![png](output_58_0.png)
+    
+
+
+## Visualisierung der Erklärungstreue als Violin-Plot
+
+
+```python
+# --- ResNet-101 Daten ---
+faith_grad_resnet = [92.4613, 43.8197, 74.9168, 51.3528, 91.1718, 75.9846, 29.1998, 90.0316, 80.5131, 73.2153, 75.5331, 85.0464, 78.9854, 46.7030, 92.5023, 71.8888, 75.1960, 58.1193, 60.7161, 83.9134, 58.4366, 76.0540, 78.2140, 78.7453, 90.3374, 71.8125, 23.2766, 88.2497, 10.4084, 84.2271, 89.2264, 93.6262]
+faith_lime_resnet = [96.4620, 43.2492, 70.1298, 90.6888, 88.0375, 78.5296, 22.0342, 86.1290, 83.2196, 80.4134, 82.0970, 92.1431, 81.1343, 22.7135, 94.8421, 84.5738, 80.1461, 73.3751, 73.2712, 90.7904, 86.4116, 66.7947, 72.6379, 89.6523, 90.0999, 85.7788, 36.8838, 87.6935, 42.4586, 85.8750, 88.9620, 93.5030]
+
+# --- MobileNetV3 Daten ---
+faith_grad_mobile = [88.8333, 57.7797, 51.1560, 41.3344, 40.1525, 52.9381, 63.2086, 53.2984, 53.7326, 48.1268, 58.0388, 50.0508, 88.5189, 44.2849, 46.2662, 57.3253, 58.3802, 39.6705, 88.1187, 50.7047, 60.5030, 48.9873, 51.5827, 86.6216, 36.3420, 37.6179, 40.7641, 56.3676, 51.3279, 55.9757, -3.5310, 86.2395]
+faith_lime_mobile = [75.1875, 46.5803, 57.7411, 48.5129, 37.7317, 41.7190, 78.6034, 55.5205, 59.9980, 34.9575, 43.0082, 44.7075, 42.4723, 38.8432, 35.1916, 62.0721, 52.4421, 47.0232, 69.0977, 37.9720, 71.5314, 48.1011, 43.3314, 82.9373, 46.8019, 31.6470, 65.6159, 38.5697, 50.0091, 46.3562, 7.4643, 86.0820]
+
+# ==========================================
+# 2. DATAFRAME ERSTELLEN FÜR SEABORN
+# ==========================================
+data = []
+
+# ResNet-Daten anhängen
+for val in faith_grad_resnet:
+    data.append({'XAI-Methode': 'Grad-CAM', 'Modell': 'ResNet-101', 'IROF Score': val})
+for val in faith_lime_resnet:
+    data.append({'XAI-Methode': 'LIME', 'Modell': 'ResNet-101', 'IROF Score': val})
+
+# MobileNet-Daten anhängen
+for val in faith_grad_mobile:
+    data.append({'XAI-Methode': 'Grad-CAM', 'Modell': 'MobileNetV3', 'IROF Score': val})
+for val in faith_lime_mobile:
+    data.append({'XAI-Methode': 'LIME', 'Modell': 'MobileNetV3', 'IROF Score': val})
+
+df = pd.DataFrame(data)
+
+# ==========================================
+# 3. GRUPPIERTEN PLOT ERSTELLEN
+# ==========================================
+plt.figure(figsize=(10, 6))
+
+# 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
+sns.violinplot(x='XAI-Methode', y='IROF Score', hue='Modell', data=df, 
+               split=True, inner='box', palette=['#1f77b4', '#ff7f0e'])
+
+plt.title('Erklärungstreue (IROF) im Modellvergleich', fontsize=14, fontweight='bold', pad=15)
+plt.ylabel('IROF Score (AOC)', fontsize=12)
+plt.xlabel('Evaluierte XAI-Methode', fontsize=12)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+# Legende anpassen
+plt.legend(title='Architektur', loc='lower center')
+plt.tight_layout()
+
+plt.show()
+```
+
+
+    
+![png](output_60_0.png)
+    
+
+
+## Visualisierung der Robustheit als Violin-Plot
+
+
+```python
+# --- ResNet-101 Daten ---
+rob_grad_resnet = [0.3938, 0.3807, 1.0087, 0.4216, 0.3379, 0.9721, 0.4353, 0.4098, 0.2915, 0.4038, 0.4298, 0.2980, 0.4962, 0.6703, 0.4088, 0.4281, 0.5416, 0.3765, 0.4685, 0.3285, 0.4868, 0.4161, 0.3679, 0.3404, 0.3265, 0.6157, 0.6097, 0.7509, 0.8328, 0.3424, 0.4068, 0.5046]
+rob_lime_resnet = [0.5796, 0.2121, 0.3770, 0.1754, 0.1700, 0.6993, 0.2831, 0.1809, 0.3383, 0.2182, 0.2903, 0.3154, 0.1808, 0.2665, 0.3781, 0.2197, 0.1987, 0.2306, 0.2757, 0.1972, 0.2692, 0.1893, 0.1748, 0.1827, 0.2242, 0.2350, 0.5864, 0.5737, 0.5936, 0.2097, 0.1773, 0.5990]
+
+# --- MobileNetV3 Daten ---
+rob_grad_mobile = [0.8903, 0.8433, 0.6700, 0.9808, 0.6653, 1.0210, 1.2674, 0.6240, 1.3576, 0.5991, 1.0480, 0.7141, 0.5874, 0.5390, 0.6449, 0.6734, 0.7630, 0.6867, 0.8297, 0.7854, 1.4032, 0.6685, 0.9022, 1.6025, 0.8016, 0.4461, 0.8231, 0.5450, 0.6705, 0.7096, 0.5578, 1.9018]
+rob_lime_mobile = [1.3891, 0.7398, 1.3414, 0.9119, 1.0601, 0.8069, 0.8961, 1.5162, 0.9040, 0.6081, 0.8062, 0.7590, 1.2249, 0.5351, 1.0121, 1.2427, 0.6190, 0.5852, 1.3218, 0.6100, 0.9927, 1.0700, 0.5186, 1.8363, 0.8020, 1.6199, 1.0374, 2.2068, 0.5837, 0.8772, 1.0502, 1.2806]
+
+# ==========================================
+# 2. DATAFRAME ERSTELLEN FÜR SEABORN
+# ==========================================
+data = []
+
+# ResNet-Daten anhängen
+for val in rob_grad_resnet:
+    data.append({'XAI-Methode': 'Grad-CAM', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+for val in rob_lime_resnet:
+    data.append({'XAI-Methode': 'LIME', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+
+# MobileNet-Daten anhängen
+for val in rob_grad_mobile:
+    data.append({'XAI-Methode': 'Grad-CAM', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+for val in rob_lime_mobile:
+    data.append({'XAI-Methode': 'LIME', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+
+df = pd.DataFrame(data)
+
+# ==========================================
+# 3. GRUPPIERTEN PLOT ERSTELLEN
+# ==========================================
+plt.figure(figsize=(10, 6))
+
+# 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
+sns.violinplot(x='XAI-Methode', y='Local Lipschitz Estimate', hue='Modell', data=df, 
+               split=True, inner='box', palette=['#1f77b4', '#ff7f0e'])
+
+plt.title('Robustheit (Local Lipschitz Estimate) im Modellvergleich', fontsize=14, fontweight='bold', pad=15)
+plt.ylabel('Local Lipschitz Estimate', fontsize=12)
+plt.xlabel('Evaluierte XAI-Methode', fontsize=12)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+# Legende anpassen
+plt.legend(title='Architektur', loc='lower center')
+plt.tight_layout()
+
+plt.show()
+```
+
+
+    
+![png](output_62_0.png)
+    
+
 
 
 ```python
