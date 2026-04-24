@@ -36,6 +36,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import copy
 import time
 from collections import Counter
+from math import pi
 
 # 2. Drittanbieter-Bibliotheken (Datenverarbeitung & Machine Learning)
 import numpy as np
@@ -274,9 +275,12 @@ oversample = RandomOverSampler(sampling_strategy=dynamic_strategy, random_state=
 X_train_oversampled, y_train_oversampled = oversample.fit_resample(X_train, y_train)
 
 y_train_oversampled_text = label_encoder.inverse_transform(y_train_oversampled)
+y_train_text = label_encoder.inverse_transform(y_train)
+print(f"Verteilung vor Sangwan-Oversampling: {Counter(y_train_text)}")
 print(f"Verteilung nach Sangwan-Oversampling: {Counter(y_train_oversampled_text)}")
 ```
 
+    Verteilung vor Sangwan-Oversampling: Counter({'nv': 4274, 'mel': 709, 'bkl': 701, 'bcc': 328, 'akiec': 209, 'vasc': 90, 'df': 73})
     Verteilung nach Sangwan-Oversampling: Counter({'nv': 4274, 'mel': 2836, 'bkl': 2804, 'bcc': 1312, 'akiec': 836, 'vasc': 360, 'df': 292})
     
 
@@ -358,8 +362,8 @@ sample_image_path = X_train_oversampled['path'].iloc[1]
 original_image = Image.open(sample_image_path).convert('RGB')
 
 # --- 3. Plot mit Original und Variationen erstellen ---
-num_variations = 5  # Wie viele augmentierte Bilder gezeigt werden sollen
-fig, axes = plt.subplots(1, num_variations + 1, figsize=(18, 4))
+num_variations = 3  # Wie viele augmentierte Bilder gezeigt werden sollen
+fig, axes = plt.subplots(1, num_variations + 1, figsize=(15, 4))
 
 # Originalbild anzeigen (nur auf 224x224 skaliert für einen fairen Vergleich)
 resize_only = transforms.Resize((224, 224))
@@ -1382,9 +1386,9 @@ loaded_data_mobilenetv3 = torch.load(MODEL_MOBILE_NET_V3_FILE_PATH)
 mobileNetV3Model.load_state_dict(loaded_data_mobilenetv3)
 ```
 
-    C:\Users\jalle\AppData\Local\Temp\ipykernel_3760\2924343579.py:1: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+    C:\Users\jalle\AppData\Local\Temp\ipykernel_26084\2924343579.py:1: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
       loaded_data_resnet101 = torch.load(MODEL_RESNET101_FILE_PATH)
-    C:\Users\jalle\AppData\Local\Temp\ipykernel_3760\2924343579.py:4: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+    C:\Users\jalle\AppData\Local\Temp\ipykernel_26084\2924343579.py:4: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
       loaded_data_mobilenetv3 = torch.load(MODEL_MOBILE_NET_V3_FILE_PATH)
     
 
@@ -1819,6 +1823,8 @@ def evaluateGradCAM(model, x_batch, y_batch, model_target_layer):
 ### Evaluiere XAI mit Quantus-Metriken
 In dieser finalen Evaluationsschleife werden Grad-CAM und LIME auf einer gezielten Stichprobe des Testdatensatzes angewendet. Es wird berechnet, welches Grundkonzept – Gradienten oder Perturbation – auf dem jeweiligen Modell (ResNet vs. MobileNet) die treueren und robusteren Erklärungen liefert und wie sich der signifikante Unterschied im Rechenaufwand verhält.
 
+
+```python
 def get_eval_data(dataloader, num_samples):
     """Zieht exakt num_samples Bilder am Stück aus dem Dataloader."""
     x_list, y_list = [], []
@@ -1870,6 +1876,7 @@ def evaluateXai(model, target_layer, title, max_gradcam=32, max_lime=10):
 # Aufruf: GradCam und Lime später mit 60 Bildern. Das ist sehr Zeitintensiv (für Lime > 12 Std. mal 2 für Resnet und MobileNet)
 evaluateXai(resNet101Model, resNet101Model.layer4[-1], "ResNet101", max_gradcam=32, max_lime=32)
 evaluateXai(mobileNetV3Model, mobileNetV3Model.features[-1], "MobileNetV3", max_gradcam=32, max_lime=32)
+```
 
 ### Zeiten messen für Grad-CAM und LIME
 
@@ -1941,7 +1948,9 @@ measure_xai_performance(mobileNetV3Model, input_img, target, mobileNetV3Model.fe
     Standardabweichung: 0.9381 Sekunden
     
 
-## 8. Heatmap-Visualisierung eines Beispielbildes
+## 8. Visualisierungen
+
+### Heatmap-Visualisierung eines Beispielbildes
 Um die berechneten quantitativen Metriken in einen praktischen Kontext zu setzen, werden in diesem Schritt die originalen Eingabebilder gemeinsam mit den generierten Heatmaps von LIME und Grad-CAM nebeneinander geplottet. Dies veranschaulicht visuell den Unterschied zwischen der feingranularen gradientenbasierten Segmentierung und der gröberen superpixel-basierten Maskierung der Modelle.
 
 
@@ -1971,8 +1980,8 @@ def visualize_explanations(model, images, labels, target_layer, title, img_idx=0
     attr_lime = np.expand_dims(attr_lime, axis=-1)
     
     # 3. Visualisierung
-    fig, axs = plt.subplots(1, 3, figsize=(20, 5))
-    fig.suptitle(f"XAI Evaluation für ein Testbild: {title}", fontsize=16, fontweight='bold', y=1.05)
+    fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+    fig.suptitle(f"XAI Evaluation: {title}", fontsize=16, fontweight='bold', y=1.05)
     
     # Originalbild plotten
     label_remapped = {0: 'akiec', 1: 'bcc', 2: 'bkl', 3: 'df', 4: 'mel', 5: 'nv', 6: 'vasc'}
@@ -1982,13 +1991,13 @@ def visualize_explanations(model, images, labels, target_layer, title, img_idx=0
     
     # Grad-CAM plotten
     viz.visualize_image_attr(
-        attr_gradcam, img_for_plot, method="blended_heat_map", sign="positive",
+        attr_gradcam, img_for_plot, method="blended_heat_map", sign="positive", cmap='jet',
         show_colorbar=False, use_pyplot=False, title="Grad-CAM", plt_fig_axis=(fig, axs[1])
     )
     
     # LIME plotten
     viz.visualize_image_attr(
-        attr_lime, img_for_plot, method="blended_heat_map", sign="positive",
+        attr_lime, img_for_plot, method="blended_heat_map", sign="positive", cmap='jet',
         show_colorbar=False, use_pyplot=False, title="LIME", plt_fig_axis=(fig, axs[2])
     )
     
@@ -2004,7 +2013,7 @@ xai_mobilenet_image_loader = get_xai_loader(mobileNetV3Model)
 data_iter = iter(xai_mobilenet_image_loader)
 images, labels = next(data_iter)
 
-visualize_explanations(resNet101Model, images, labels, resNet101Model.layer4[-1], "ResNet101", 3)
+visualize_explanations(resNet101Model, images, labels, resNet101Model.layer4[-1], "ResNet-101", 3)
 visualize_explanations(mobileNetV3Model, images, labels, mobileNetV3Model.features[-1],"MobileNetV3", 3)
 
 
@@ -2012,13 +2021,13 @@ visualize_explanations(mobileNetV3Model, images, labels, mobileNetV3Model.featur
 
 
     
-![png](output_54_0.png)
+![png](output_55_0.png)
     
 
 
 
     
-![png](output_54_1.png)
+![png](output_55_1.png)
     
 
 
@@ -2077,18 +2086,18 @@ fractions = np.linspace(0, 1, 10)
 # ==========================================
 # 5. Plotten der Schematischen Abbildung
 # ==========================================
-fig, axes = plt.subplots(1, 2, figsize=(18, 5))
+fig, axes = plt.subplots(1, 2, figsize=(10, 5))
 plt.rcParams.update({'font.size': 12})
 
 # Plot 1: Originalbild mit Superpixeln
 img_with_boundaries = mark_boundaries(img, segments, color=(1, 1, 0), mode='thick')
 axes[0].imshow(img_with_boundaries)
-axes[0].set_title("1. Segmentierung (SLIC)", fontweight='bold')
+axes[0].set_title("Segmentierung", fontweight='bold')
 axes[0].axis('off')
 
 # Plot 2: Iterative Maskierung (Mean Imputation)
 axes[1].imshow(masked_img)
-axes[1].set_title("2. Maskierung relevanter Segmente", fontweight='bold')
+axes[1].set_title("Maskierung relevanter Segmente", fontweight='bold')
 axes[1].axis('off')
 
 # Layout optimieren und anzeigen
@@ -2098,11 +2107,11 @@ plt.show()
 
 
     
-![png](output_56_0.png)
+![png](output_57_0.png)
     
 
 
-## Visualisierung wie sich leichtes Racuhen auf das Ergebnis auswirkt
+### Visualisierung wie sich leichtes Rauschen auf das Ergebnis auswirkt
 
 
 ```python
@@ -2155,7 +2164,7 @@ def plot_gradcam_instability(model, images, labels, target_layer, img_idx=0, noi
     # Spalte 1: Originalbild + saubere Heatmap
     viz.visualize_image_attr(
         attr_orig, img_orig_plot, method="blended_heat_map", sign="positive",
-        show_colorbar=False, use_pyplot=False, 
+        show_colorbar=False, use_pyplot=False, cmap='jet',
         title="Originalbild\n+ saubere Heatmap", plt_fig_axis=(fig, axs[0])
     )
     
@@ -2168,7 +2177,7 @@ def plot_gradcam_instability(model, images, labels, target_layer, img_idx=0, noi
     # Spalte 3: Gestörtes Bild + zerschossene Heatmap (KORRIGIERT auf axs[2])
     viz.visualize_image_attr(
         attr_noisy, img_noisy_plot, method="blended_heat_map", sign="positive",
-        show_colorbar=False, use_pyplot=False, 
+        show_colorbar=False, use_pyplot=False, cmap='jet',
         title="Gestörtes Bild\n+ verschobene Heatmap", plt_fig_axis=(fig, axs[2])
     )
     
@@ -2183,11 +2192,11 @@ plot_gradcam_instability(resNet101Model, images, labels, resNet101Model.layer4[-
 
 
     
-![png](output_58_0.png)
+![png](output_59_0.png)
     
 
 
-## Visualisierung der Erklärungstreue als Violin-Plot
+### Visualisierung der Erklärungstreue als Violin-Plot
 
 
 ```python
@@ -2225,7 +2234,7 @@ plt.figure(figsize=(10, 6))
 
 # 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
 sns.violinplot(x='XAI-Methode', y='IROF Score', hue='Modell', data=df, 
-               split=True, inner='box', palette=['#1f77b4', '#ff7f0e'])
+               split=True, inner='box', palette=['#005EA6', '#EFB251'])
 
 plt.title('Erklärungstreue (IROF) im Modellvergleich', fontsize=14, fontweight='bold', pad=15)
 plt.ylabel('IROF Score (AOC)', fontsize=12)
@@ -2241,11 +2250,11 @@ plt.show()
 
 
     
-![png](output_60_0.png)
+![png](output_61_0.png)
     
 
 
-## Visualisierung der Robustheit als Violin-Plot
+### Visualisierung der Robustheit als Violin-Plot
 
 
 ```python
@@ -2283,7 +2292,7 @@ plt.figure(figsize=(10, 6))
 
 # 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
 sns.violinplot(x='XAI-Methode', y='Local Lipschitz Estimate', hue='Modell', data=df, 
-               split=True, inner='box', palette=['#1f77b4', '#ff7f0e'])
+               split=True, inner='box', palette=['#005EA6', '#EFB251'])
 
 plt.title('Robustheit (Local Lipschitz Estimate) im Modellvergleich', fontsize=14, fontweight='bold', pad=15)
 plt.ylabel('Local Lipschitz Estimate', fontsize=12)
@@ -2299,7 +2308,7 @@ plt.show()
 
 
     
-![png](output_62_0.png)
+![png](output_63_0.png)
     
 
 
