@@ -64,7 +64,8 @@ from torchvision.models import MobileNet_V3_Large_Weights
 # 4. Explainable AI (XAI)
 import quantus
 from captum._utils.models.linear_model import SkLearnLinearRegression
-from captum.attr import LayerGradCam, Lime, visualization as viz
+from captum.attr import LayerGradCam, visualization as viz, LayerAttribution
+from lime import lime_image
 ```
 
 
@@ -605,7 +606,7 @@ Vorsicht: Folgender Aufruf ist sehr zeitintensiv. (mehrere Stunden)
 
 
 ```python
-#Komplettes Netz einfrieren, nur Classifier auftauen!
+# Komplettes Netz einfrieren, nur Classifier auftauen!
 for param in mobileNetV3Model.parameters():
     param.requires_grad = False
     
@@ -615,20 +616,14 @@ for param in mobileNetV3Model.classifier.parameters():
 mobileNetV3Model = fit(
     model=mobileNetV3Model, 
     train_loader=train_loader, 
-    val_loader=val_loader, 
-    title="MobileNetV3 Phase 1 (Warm-Up Kopf)", 
-    num_epochs=20,             # Nur kurzes Aufwärmen
+    val_loader=val_loader,
+    title="MobileNetV3 Phase 1 (Warm-up)", 
+    num_epochs=100,             
     learning_rate=0.001,       
-    early_stop_patience=5      # Kann hier sehr kurz sein
+    early_stop_patience=10     
 )
 
 print("\nEntfriere das gesamte Netzwerk für das Fine-Tuning...")
-
-# Nur das letzte Viertel des Netzwerks auftauen!
-# PyTorch's MobileNetV3 hat die Faltungsschichten im Block 'features'.
-# Wir tauen nur die letzten 4 Blöcke auf (Index -4 bis Ende), der Rest bleibt sicher eingefroren!
-for param in mobileNetV3Model.features[-4:].parameters():
-    param.requires_grad = True
 
 # Wir tauen nun das gesamte Netzwerk auf, um die tieferen Schichten an die 
 # spezifischen Hautkrebs-Merkmale anzupassen ("and then all layers were trained 
@@ -636,448 +631,278 @@ for param in mobileNetV3Model.features[-4:].parameters():
 for param in mobileNetV3Model.parameters():
     param.requires_grad = True
 
-# Jetzt starten wir das eigentliche lange Training. 
-# WICHTIG: Die Lernrate MUSS jetzt mikroskopisch klein sein, da wir das 
-# Netz nur "feinjustieren" und nicht aus dem Konzept bringen wollen!
+# Jetzt starten wir das eigentliche lange Training. !
 mobileNetV3Model = fit(
     model=mobileNetV3Model, 
     train_loader=train_loader, 
     val_loader=val_loader, 
     title="MobileNetV3 Phase 2 (Full Fine-Tuning)", 
-    num_epochs=50,             # Jetzt dürfen es mehr Epochen sein
-    learning_rate=1e-5,        # extrem wichtig für Fine-Tuning!
-    early_stop_patience=10     # Jetzt greift das eigentliche Early Stopping
+    num_epochs=100,           
+    learning_rate=0.0001,       
+    early_stop_patience=10    
 )
 
 torch.save(mobileNetV3Model.state_dict(), MODEL_MOBILE_NET_V3_FILE_PATH)
 ```
 
-    Starte Training auf Gerät: cuda für MobileNetV3 Phase 1 (Warm-Up Kopf)
-    Epoch 1/20
+    Starte Training auf Gerät: cuda für MobileNetV3 Phase 1 (Warm-up)
+    Epoch 1/100
     ----------
-    train Loss: 0.9196 Acc: 0.6465 Precision: 0.6434 F1-Score: 0.6434
-    val Loss: 0.7042 Acc: 0.7486 Precision: 0.7698 F1-Score: 0.7515
+    train Loss: 0.0676 Acc: 0.9781 Precision: 0.9781 F1-Score: 0.9781
+    val Loss: 0.7588 Acc: 0.8609 Precision: 0.8549 F1-Score: 0.8560
     Neues bestes Modell gespeichert!
     
-    Epoch 2/20
+    Epoch 2/100
     ----------
-    train Loss: 0.8394 Acc: 0.6825 Precision: 0.6815 F1-Score: 0.6813
-    val Loss: 0.7452 Acc: 0.7298 Precision: 0.7711 F1-Score: 0.7444
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 3/20
-    ----------
-    train Loss: 0.8027 Acc: 0.6886 Precision: 0.6875 F1-Score: 0.6873
-    val Loss: 0.6866 Acc: 0.7514 Precision: 0.7839 F1-Score: 0.7599
+    train Loss: 0.0676 Acc: 0.9785 Precision: 0.9785 F1-Score: 0.9785
+    val Loss: 0.8578 Acc: 0.8623 Precision: 0.8598 F1-Score: 0.8553
     Neues bestes Modell gespeichert!
     
-    Epoch 4/20
+    Epoch 3/100
     ----------
-    train Loss: 0.7593 Acc: 0.7092 Precision: 0.7086 F1-Score: 0.7086
-    val Loss: 0.7051 Acc: 0.7486 Precision: 0.7880 F1-Score: 0.7622
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 5/20
-    ----------
-    train Loss: 0.7383 Acc: 0.7184 Precision: 0.7179 F1-Score: 0.7178
-    val Loss: 0.7061 Acc: 0.7566 Precision: 0.7781 F1-Score: 0.7571
+    train Loss: 0.0690 Acc: 0.9781 Precision: 0.9781 F1-Score: 0.9781
+    val Loss: 0.8677 Acc: 0.8633 Precision: 0.8548 F1-Score: 0.8543
     Neues bestes Modell gespeichert!
     
-    Epoch 6/20
+    Epoch 4/100
     ----------
-    train Loss: 0.6993 Acc: 0.7303 Precision: 0.7302 F1-Score: 0.7300
-    val Loss: 0.7202 Acc: 0.7350 Precision: 0.7931 F1-Score: 0.7533
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 7/20
-    ----------
-    train Loss: 0.6124 Acc: 0.7678 Precision: 0.7679 F1-Score: 0.7677
-    val Loss: 0.6365 Acc: 0.7721 Precision: 0.7854 F1-Score: 0.7757
+    train Loss: 0.0633 Acc: 0.9792 Precision: 0.9792 F1-Score: 0.9792
+    val Loss: 0.8381 Acc: 0.8642 Precision: 0.8567 F1-Score: 0.8557
     Neues bestes Modell gespeichert!
     
-    Epoch 8/20
+    Epoch 5/100
     ----------
-    train Loss: 0.5900 Acc: 0.7741 Precision: 0.7743 F1-Score: 0.7740
-    val Loss: 0.6517 Acc: 0.7679 Precision: 0.7853 F1-Score: 0.7731
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 9/20
-    ----------
-    train Loss: 0.5693 Acc: 0.7801 Precision: 0.7799 F1-Score: 0.7798
-    val Loss: 0.6435 Acc: 0.7768 Precision: 0.7947 F1-Score: 0.7837
+    train Loss: 0.0602 Acc: 0.9818 Precision: 0.9818 F1-Score: 0.9818
+    val Loss: 0.7085 Acc: 0.8675 Precision: 0.8623 F1-Score: 0.8636
     Neues bestes Modell gespeichert!
     
-    Epoch 10/20
+    Epoch 6/100
     ----------
-    train Loss: 0.5368 Acc: 0.7963 Precision: 0.7961 F1-Score: 0.7961
-    val Loss: 0.7028 Acc: 0.7594 Precision: 0.7957 F1-Score: 0.7709
+    train Loss: 0.0500 Acc: 0.9811 Precision: 0.9811 F1-Score: 0.9811
+    val Loss: 0.7265 Acc: 0.8651 Precision: 0.8588 F1-Score: 0.8606
     Keine Verbesserung seit 1 Epoche(n).
     
-    Epoch 11/20
+    Epoch 7/100
     ----------
-    train Loss: 0.4926 Acc: 0.8158 Precision: 0.8159 F1-Score: 0.8157
-    val Loss: 0.6322 Acc: 0.7801 Precision: 0.7949 F1-Score: 0.7853
-    Neues bestes Modell gespeichert!
-    
-    Epoch 12/20
-    ----------
-    train Loss: 0.4909 Acc: 0.8157 Precision: 0.8160 F1-Score: 0.8158
-    val Loss: 0.6500 Acc: 0.7749 Precision: 0.7907 F1-Score: 0.7804
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 13/20
-    ----------
-    train Loss: 0.4800 Acc: 0.8202 Precision: 0.8205 F1-Score: 0.8202
-    val Loss: 0.6354 Acc: 0.7744 Precision: 0.7918 F1-Score: 0.7793
+    train Loss: 0.0513 Acc: 0.9821 Precision: 0.9821 F1-Score: 0.9821
+    val Loss: 0.7439 Acc: 0.8675 Precision: 0.8611 F1-Score: 0.8622
     Keine Verbesserung seit 2 Epoche(n).
     
-    Epoch 14/20
+    Epoch 8/100
     ----------
-    train Loss: 0.4694 Acc: 0.8236 Precision: 0.8238 F1-Score: 0.8236
-    val Loss: 0.6161 Acc: 0.7852 Precision: 0.7964 F1-Score: 0.7896
+    train Loss: 0.0469 Acc: 0.9836 Precision: 0.9836 F1-Score: 0.9836
+    val Loss: 0.7232 Acc: 0.8684 Precision: 0.8631 F1-Score: 0.8644
     Neues bestes Modell gespeichert!
     
-    Epoch 15/20
+    Epoch 9/100
     ----------
-    train Loss: 0.4555 Acc: 0.8294 Precision: 0.8296 F1-Score: 0.8294
-    val Loss: 0.6232 Acc: 0.7796 Precision: 0.7909 F1-Score: 0.7833
+    train Loss: 0.0498 Acc: 0.9825 Precision: 0.9825 F1-Score: 0.9825
+    val Loss: 0.7499 Acc: 0.8647 Precision: 0.8576 F1-Score: 0.8580
     Keine Verbesserung seit 1 Epoche(n).
     
-    Epoch 16/20
+    Epoch 10/100
     ----------
-    train Loss: 0.4577 Acc: 0.8280 Precision: 0.8280 F1-Score: 0.8279
-    val Loss: 0.6211 Acc: 0.7876 Precision: 0.7998 F1-Score: 0.7911
+    train Loss: 0.0482 Acc: 0.9839 Precision: 0.9839 F1-Score: 0.9839
+    val Loss: 0.7426 Acc: 0.8708 Precision: 0.8642 F1-Score: 0.8631
     Neues bestes Modell gespeichert!
     
-    Epoch 17/20
+    Epoch 11/100
     ----------
-    train Loss: 0.4414 Acc: 0.8366 Precision: 0.8367 F1-Score: 0.8365
-    val Loss: 0.6141 Acc: 0.7871 Precision: 0.7956 F1-Score: 0.7904
+    train Loss: 0.0473 Acc: 0.9835 Precision: 0.9835 F1-Score: 0.9835
+    val Loss: 0.7380 Acc: 0.8680 Precision: 0.8621 F1-Score: 0.8618
     Keine Verbesserung seit 1 Epoche(n).
     
-    Epoch 18/20
+    Epoch 12/100
     ----------
-    train Loss: 0.4358 Acc: 0.8377 Precision: 0.8378 F1-Score: 0.8376
-    val Loss: 0.6504 Acc: 0.7740 Precision: 0.7979 F1-Score: 0.7822
+    train Loss: 0.0420 Acc: 0.9858 Precision: 0.9858 F1-Score: 0.9858
+    val Loss: 0.7383 Acc: 0.8694 Precision: 0.8631 F1-Score: 0.8631
     Keine Verbesserung seit 2 Epoche(n).
     
-    Epoch 19/20
+    Epoch 13/100
     ----------
-    train Loss: 0.4298 Acc: 0.8381 Precision: 0.8383 F1-Score: 0.8382
-    val Loss: 0.6580 Acc: 0.7824 Precision: 0.8035 F1-Score: 0.7903
+    train Loss: 0.0485 Acc: 0.9833 Precision: 0.9833 F1-Score: 0.9833
+    val Loss: 0.7021 Acc: 0.8717 Precision: 0.8655 F1-Score: 0.8662
+    Neues bestes Modell gespeichert!
+    
+    Epoch 14/100
+    ----------
+    train Loss: 0.0448 Acc: 0.9840 Precision: 0.9840 F1-Score: 0.9840
+    val Loss: 0.7249 Acc: 0.8694 Precision: 0.8626 F1-Score: 0.8625
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 15/100
+    ----------
+    train Loss: 0.0427 Acc: 0.9866 Precision: 0.9866 F1-Score: 0.9866
+    val Loss: 0.6907 Acc: 0.8689 Precision: 0.8627 F1-Score: 0.8639
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 16/100
+    ----------
+    train Loss: 0.0424 Acc: 0.9855 Precision: 0.9855 F1-Score: 0.9855
+    val Loss: 0.7053 Acc: 0.8727 Precision: 0.8667 F1-Score: 0.8670
+    Neues bestes Modell gespeichert!
+    
+    Epoch 17/100
+    ----------
+    train Loss: 0.0440 Acc: 0.9851 Precision: 0.9851 F1-Score: 0.9851
+    val Loss: 0.7044 Acc: 0.8689 Precision: 0.8624 F1-Score: 0.8632
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 18/100
+    ----------
+    train Loss: 0.0441 Acc: 0.9864 Precision: 0.9864 F1-Score: 0.9864
+    val Loss: 0.7041 Acc: 0.8712 Precision: 0.8655 F1-Score: 0.8664
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 19/100
+    ----------
+    train Loss: 0.0429 Acc: 0.9836 Precision: 0.9836 F1-Score: 0.9836
+    val Loss: 0.7015 Acc: 0.8694 Precision: 0.8627 F1-Score: 0.8639
     Keine Verbesserung seit 3 Epoche(n).
     
-    Epoch 20/20
+    Epoch 20/100
     ----------
-    train Loss: 0.4261 Acc: 0.8445 Precision: 0.8447 F1-Score: 0.8445
-    val Loss: 0.6043 Acc: 0.7862 Precision: 0.7876 F1-Score: 0.7864
+    train Loss: 0.0385 Acc: 0.9862 Precision: 0.9862 F1-Score: 0.9862
+    val Loss: 0.7035 Acc: 0.8722 Precision: 0.8661 F1-Score: 0.8667
     Keine Verbesserung seit 4 Epoche(n).
     
-    Best Val Acc: 0.7876 Precision: 0.7998 F1-Score: 0.7911
-    
-    Entfriere das gesamte Netzwerk für das Fine-Tuning...
-    Starte Training auf Gerät: cuda für MobileNetV3 Phase 2 (Full Fine-Tuning)
-    Epoch 1/50
+    Epoch 21/100
     ----------
-    train Loss: 0.4115 Acc: 0.8490 Precision: 0.8491 F1-Score: 0.8489
-    val Loss: 0.5871 Acc: 0.7998 Precision: 0.8074 F1-Score: 0.8022
-    Neues bestes Modell gespeichert!
-    
-    Epoch 2/50
-    ----------
-    train Loss: 0.3795 Acc: 0.8602 Precision: 0.8603 F1-Score: 0.8601
-    val Loss: 0.5648 Acc: 0.8102 Precision: 0.8154 F1-Score: 0.8118
-    Neues bestes Modell gespeichert!
-    
-    Epoch 3/50
-    ----------
-    train Loss: 0.3490 Acc: 0.8709 Precision: 0.8710 F1-Score: 0.8709
-    val Loss: 0.5541 Acc: 0.8106 Precision: 0.8123 F1-Score: 0.8099
-    Neues bestes Modell gespeichert!
-    
-    Epoch 4/50
-    ----------
-    train Loss: 0.3158 Acc: 0.8844 Precision: 0.8844 F1-Score: 0.8843
-    val Loss: 0.5443 Acc: 0.8177 Precision: 0.8233 F1-Score: 0.8192
-    Neues bestes Modell gespeichert!
-    
-    Epoch 5/50
-    ----------
-    train Loss: 0.3117 Acc: 0.8878 Precision: 0.8879 F1-Score: 0.8878
-    val Loss: 0.5354 Acc: 0.8210 Precision: 0.8239 F1-Score: 0.8211
-    Neues bestes Modell gespeichert!
-    
-    Epoch 6/50
-    ----------
-    train Loss: 0.2973 Acc: 0.8948 Precision: 0.8950 F1-Score: 0.8948
-    val Loss: 0.5285 Acc: 0.8214 Precision: 0.8232 F1-Score: 0.8212
-    Neues bestes Modell gespeichert!
-    
-    Epoch 7/50
-    ----------
-    train Loss: 0.2776 Acc: 0.9012 Precision: 0.9013 F1-Score: 0.9012
-    val Loss: 0.5296 Acc: 0.8238 Precision: 0.8244 F1-Score: 0.8226
-    Neues bestes Modell gespeichert!
-    
-    Epoch 8/50
-    ----------
-    train Loss: 0.2818 Acc: 0.8992 Precision: 0.8993 F1-Score: 0.8993
-    val Loss: 0.5229 Acc: 0.8252 Precision: 0.8278 F1-Score: 0.8253
-    Neues bestes Modell gespeichert!
-    
-    Epoch 9/50
-    ----------
-    train Loss: 0.2588 Acc: 0.9076 Precision: 0.9078 F1-Score: 0.9076
-    val Loss: 0.5184 Acc: 0.8313 Precision: 0.8327 F1-Score: 0.8305
-    Neues bestes Modell gespeichert!
-    
-    Epoch 10/50
-    ----------
-    train Loss: 0.2435 Acc: 0.9136 Precision: 0.9138 F1-Score: 0.9136
-    val Loss: 0.5129 Acc: 0.8304 Precision: 0.8310 F1-Score: 0.8294
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 11/50
-    ----------
-    train Loss: 0.2424 Acc: 0.9154 Precision: 0.9154 F1-Score: 0.9154
-    val Loss: 0.5113 Acc: 0.8355 Precision: 0.8351 F1-Score: 0.8341
-    Neues bestes Modell gespeichert!
-    
-    Epoch 12/50
-    ----------
-    train Loss: 0.2281 Acc: 0.9188 Precision: 0.9189 F1-Score: 0.9188
-    val Loss: 0.5066 Acc: 0.8402 Precision: 0.8396 F1-Score: 0.8384
-    Neues bestes Modell gespeichert!
-    
-    Epoch 13/50
-    ----------
-    train Loss: 0.2206 Acc: 0.9241 Precision: 0.9242 F1-Score: 0.9241
-    val Loss: 0.5036 Acc: 0.8426 Precision: 0.8405 F1-Score: 0.8403
-    Neues bestes Modell gespeichert!
-    
-    Epoch 14/50
-    ----------
-    train Loss: 0.2064 Acc: 0.9291 Precision: 0.9291 F1-Score: 0.9291
-    val Loss: 0.5038 Acc: 0.8416 Precision: 0.8387 F1-Score: 0.8390
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 15/50
-    ----------
-    train Loss: 0.2121 Acc: 0.9269 Precision: 0.9268 F1-Score: 0.9268
-    val Loss: 0.5001 Acc: 0.8388 Precision: 0.8364 F1-Score: 0.8368
-    Keine Verbesserung seit 2 Epoche(n).
-    
-    Epoch 16/50
-    ----------
-    train Loss: 0.2072 Acc: 0.9274 Precision: 0.9274 F1-Score: 0.9274
-    val Loss: 0.4992 Acc: 0.8454 Precision: 0.8430 F1-Score: 0.8431
-    Neues bestes Modell gespeichert!
-    
-    Epoch 17/50
-    ----------
-    train Loss: 0.1959 Acc: 0.9338 Precision: 0.9340 F1-Score: 0.9338
-    val Loss: 0.4883 Acc: 0.8445 Precision: 0.8403 F1-Score: 0.8410
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 18/50
-    ----------
-    train Loss: 0.1881 Acc: 0.9368 Precision: 0.9369 F1-Score: 0.9368
-    val Loss: 0.4912 Acc: 0.8459 Precision: 0.8427 F1-Score: 0.8430
-    Neues bestes Modell gespeichert!
-    
-    Epoch 19/50
-    ----------
-    train Loss: 0.1850 Acc: 0.9342 Precision: 0.9342 F1-Score: 0.9342
-    val Loss: 0.4964 Acc: 0.8421 Precision: 0.8400 F1-Score: 0.8398
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 20/50
-    ----------
-    train Loss: 0.1766 Acc: 0.9397 Precision: 0.9398 F1-Score: 0.9397
-    val Loss: 0.4889 Acc: 0.8477 Precision: 0.8438 F1-Score: 0.8444
-    Neues bestes Modell gespeichert!
-    
-    Epoch 21/50
-    ----------
-    train Loss: 0.1677 Acc: 0.9428 Precision: 0.9429 F1-Score: 0.9428
-    val Loss: 0.4896 Acc: 0.8463 Precision: 0.8420 F1-Score: 0.8430
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 22/50
-    ----------
-    train Loss: 0.1712 Acc: 0.9408 Precision: 0.9408 F1-Score: 0.9408
-    val Loss: 0.4924 Acc: 0.8473 Precision: 0.8424 F1-Score: 0.8430
-    Keine Verbesserung seit 2 Epoche(n).
-    
-    Epoch 23/50
-    ----------
-    train Loss: 0.1637 Acc: 0.9416 Precision: 0.9417 F1-Score: 0.9417
-    val Loss: 0.4916 Acc: 0.8487 Precision: 0.8446 F1-Score: 0.8446
-    Neues bestes Modell gespeichert!
-    
-    Epoch 24/50
-    ----------
-    train Loss: 0.1566 Acc: 0.9457 Precision: 0.9457 F1-Score: 0.9456
-    val Loss: 0.4916 Acc: 0.8477 Precision: 0.8437 F1-Score: 0.8441
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 25/50
-    ----------
-    train Loss: 0.1591 Acc: 0.9446 Precision: 0.9446 F1-Score: 0.9446
-    val Loss: 0.4881 Acc: 0.8506 Precision: 0.8463 F1-Score: 0.8469
-    Neues bestes Modell gespeichert!
-    
-    Epoch 26/50
-    ----------
-    train Loss: 0.1563 Acc: 0.9457 Precision: 0.9457 F1-Score: 0.9457
-    val Loss: 0.4892 Acc: 0.8477 Precision: 0.8444 F1-Score: 0.8446
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 27/50
-    ----------
-    train Loss: 0.1579 Acc: 0.9442 Precision: 0.9444 F1-Score: 0.9443
-    val Loss: 0.4873 Acc: 0.8468 Precision: 0.8430 F1-Score: 0.8436
-    Keine Verbesserung seit 2 Epoche(n).
-    
-    Epoch 28/50
-    ----------
-    train Loss: 0.1562 Acc: 0.9477 Precision: 0.9477 F1-Score: 0.9477
-    val Loss: 0.4889 Acc: 0.8496 Precision: 0.8458 F1-Score: 0.8460
-    Keine Verbesserung seit 3 Epoche(n).
-    
-    Epoch 29/50
-    ----------
-    train Loss: 0.1523 Acc: 0.9486 Precision: 0.9487 F1-Score: 0.9486
-    val Loss: 0.4866 Acc: 0.8510 Precision: 0.8464 F1-Score: 0.8473
-    Neues bestes Modell gespeichert!
-    
-    Epoch 30/50
-    ----------
-    train Loss: 0.1525 Acc: 0.9468 Precision: 0.9469 F1-Score: 0.9468
-    val Loss: 0.4880 Acc: 0.8501 Precision: 0.8453 F1-Score: 0.8461
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 31/50
-    ----------
-    train Loss: 0.1474 Acc: 0.9506 Precision: 0.9506 F1-Score: 0.9506
-    val Loss: 0.4886 Acc: 0.8520 Precision: 0.8470 F1-Score: 0.8479
-    Neues bestes Modell gespeichert!
-    
-    Epoch 32/50
-    ----------
-    train Loss: 0.1490 Acc: 0.9498 Precision: 0.9498 F1-Score: 0.9498
-    val Loss: 0.4885 Acc: 0.8515 Precision: 0.8471 F1-Score: 0.8477
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 33/50
-    ----------
-    train Loss: 0.1442 Acc: 0.9512 Precision: 0.9513 F1-Score: 0.9512
-    val Loss: 0.4884 Acc: 0.8524 Precision: 0.8469 F1-Score: 0.8480
-    Neues bestes Modell gespeichert!
-    
-    Epoch 34/50
-    ----------
-    train Loss: 0.1469 Acc: 0.9490 Precision: 0.9490 F1-Score: 0.9489
-    val Loss: 0.4875 Acc: 0.8510 Precision: 0.8458 F1-Score: 0.8469
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 35/50
-    ----------
-    train Loss: 0.1464 Acc: 0.9501 Precision: 0.9502 F1-Score: 0.9501
-    val Loss: 0.4880 Acc: 0.8496 Precision: 0.8443 F1-Score: 0.8455
-    Keine Verbesserung seit 2 Epoche(n).
-    
-    Epoch 36/50
-    ----------
-    train Loss: 0.1481 Acc: 0.9490 Precision: 0.9491 F1-Score: 0.9490
-    val Loss: 0.4868 Acc: 0.8487 Precision: 0.8436 F1-Score: 0.8448
-    Keine Verbesserung seit 3 Epoche(n).
-    
-    Epoch 37/50
-    ----------
-    train Loss: 0.1433 Acc: 0.9544 Precision: 0.9544 F1-Score: 0.9544
-    val Loss: 0.4866 Acc: 0.8515 Precision: 0.8465 F1-Score: 0.8474
-    Keine Verbesserung seit 4 Epoche(n).
-    
-    Epoch 38/50
-    ----------
-    train Loss: 0.1470 Acc: 0.9512 Precision: 0.9512 F1-Score: 0.9512
-    val Loss: 0.4870 Acc: 0.8510 Precision: 0.8464 F1-Score: 0.8471
+    train Loss: 0.0386 Acc: 0.9874 Precision: 0.9874 F1-Score: 0.9874
+    val Loss: 0.7060 Acc: 0.8694 Precision: 0.8626 F1-Score: 0.8636
     Keine Verbesserung seit 5 Epoche(n).
     
-    Epoch 39/50
+    Epoch 22/100
     ----------
-    train Loss: 0.1476 Acc: 0.9491 Precision: 0.9492 F1-Score: 0.9491
-    val Loss: 0.4870 Acc: 0.8524 Precision: 0.8474 F1-Score: 0.8485
+    train Loss: 0.0395 Acc: 0.9860 Precision: 0.9860 F1-Score: 0.9860
+    val Loss: 0.6965 Acc: 0.8712 Precision: 0.8649 F1-Score: 0.8657
     Keine Verbesserung seit 6 Epoche(n).
     
-    Epoch 40/50
+    Epoch 23/100
     ----------
-    train Loss: 0.1430 Acc: 0.9509 Precision: 0.9509 F1-Score: 0.9509
-    val Loss: 0.4860 Acc: 0.8496 Precision: 0.8447 F1-Score: 0.8459
+    train Loss: 0.0421 Acc: 0.9862 Precision: 0.9862 F1-Score: 0.9862
+    val Loss: 0.7016 Acc: 0.8698 Precision: 0.8632 F1-Score: 0.8641
     Keine Verbesserung seit 7 Epoche(n).
     
-    Epoch 41/50
+    Epoch 24/100
     ----------
-    train Loss: 0.1427 Acc: 0.9527 Precision: 0.9527 F1-Score: 0.9527
-    val Loss: 0.4879 Acc: 0.8534 Precision: 0.8482 F1-Score: 0.8489
-    Neues bestes Modell gespeichert!
-    
-    Epoch 42/50
-    ----------
-    train Loss: 0.1422 Acc: 0.9520 Precision: 0.9521 F1-Score: 0.9520
-    val Loss: 0.4864 Acc: 0.8515 Precision: 0.8464 F1-Score: 0.8473
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 43/50
-    ----------
-    train Loss: 0.1427 Acc: 0.9515 Precision: 0.9516 F1-Score: 0.9515
-    val Loss: 0.4862 Acc: 0.8506 Precision: 0.8453 F1-Score: 0.8465
-    Keine Verbesserung seit 2 Epoche(n).
-    
-    Epoch 44/50
-    ----------
-    train Loss: 0.1413 Acc: 0.9537 Precision: 0.9537 F1-Score: 0.9536
-    val Loss: 0.4862 Acc: 0.8524 Precision: 0.8472 F1-Score: 0.8481
-    Keine Verbesserung seit 3 Epoche(n).
-    
-    Epoch 45/50
-    ----------
-    train Loss: 0.1419 Acc: 0.9523 Precision: 0.9523 F1-Score: 0.9523
-    val Loss: 0.4855 Acc: 0.8524 Precision: 0.8475 F1-Score: 0.8485
-    Keine Verbesserung seit 4 Epoche(n).
-    
-    Epoch 46/50
-    ----------
-    train Loss: 0.1459 Acc: 0.9504 Precision: 0.9505 F1-Score: 0.9504
-    val Loss: 0.4851 Acc: 0.8501 Precision: 0.8453 F1-Score: 0.8463
-    Keine Verbesserung seit 5 Epoche(n).
-    
-    Epoch 47/50
-    ----------
-    train Loss: 0.1447 Acc: 0.9513 Precision: 0.9513 F1-Score: 0.9513
-    val Loss: 0.4854 Acc: 0.8524 Precision: 0.8476 F1-Score: 0.8484
-    Keine Verbesserung seit 6 Epoche(n).
-    
-    Epoch 48/50
-    ----------
-    train Loss: 0.1433 Acc: 0.9520 Precision: 0.9520 F1-Score: 0.9520
-    val Loss: 0.4854 Acc: 0.8506 Precision: 0.8455 F1-Score: 0.8466
-    Keine Verbesserung seit 7 Epoche(n).
-    
-    Epoch 49/50
-    ----------
-    train Loss: 0.1424 Acc: 0.9511 Precision: 0.9511 F1-Score: 0.9511
-    val Loss: 0.4876 Acc: 0.8524 Precision: 0.8474 F1-Score: 0.8484
+    train Loss: 0.0437 Acc: 0.9854 Precision: 0.9854 F1-Score: 0.9854
+    val Loss: 0.6883 Acc: 0.8703 Precision: 0.8642 F1-Score: 0.8653
     Keine Verbesserung seit 8 Epoche(n).
     
-    Epoch 50/50
+    Epoch 25/100
     ----------
-    train Loss: 0.1446 Acc: 0.9514 Precision: 0.9514 F1-Score: 0.9514
-    val Loss: 0.4870 Acc: 0.8510 Precision: 0.8462 F1-Score: 0.8467
+    train Loss: 0.0366 Acc: 0.9866 Precision: 0.9866 F1-Score: 0.9866
+    val Loss: 0.7042 Acc: 0.8694 Precision: 0.8627 F1-Score: 0.8633
     Keine Verbesserung seit 9 Epoche(n).
     
-    Best Val Acc: 0.8534 Precision: 0.8482 F1-Score: 0.8489
+    Epoch 26/100
+    ----------
+    train Loss: 0.0345 Acc: 0.9884 Precision: 0.9884 F1-Score: 0.9884
+    val Loss: 0.7137 Acc: 0.8712 Precision: 0.8646 F1-Score: 0.8648
+    Keine Verbesserung seit 10 Epoche(n).
+    
+    Early Stopping ausgelöst! Keine Verbesserung der Validation Accuracy über 10 aufeinanderfolgende Epochen.
+    Best Val Acc: 0.8727 Precision: 0.8667 F1-Score: 0.8670
+    Starte Training auf Gerät: cuda für MobileNetV3 Phase 2 (Full Fine-Tuning)
+    Epoch 1/100
+    ----------
+    train Loss: 0.0494 Acc: 0.9829 Precision: 0.9829 F1-Score: 0.9829
+    val Loss: 0.7248 Acc: 0.8595 Precision: 0.8543 F1-Score: 0.8561
+    Neues bestes Modell gespeichert!
+    
+    Epoch 2/100
+    ----------
+    train Loss: 0.0585 Acc: 0.9798 Precision: 0.9798 F1-Score: 0.9798
+    val Loss: 0.7421 Acc: 0.8548 Precision: 0.8477 F1-Score: 0.8498
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 3/100
+    ----------
+    train Loss: 0.0425 Acc: 0.9843 Precision: 0.9843 F1-Score: 0.9843
+    val Loss: 0.7775 Acc: 0.8595 Precision: 0.8522 F1-Score: 0.8522
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 4/100
+    ----------
+    train Loss: 0.0473 Acc: 0.9835 Precision: 0.9835 F1-Score: 0.9835
+    val Loss: 0.8550 Acc: 0.8614 Precision: 0.8533 F1-Score: 0.8518
+    Neues bestes Modell gespeichert!
+    
+    Epoch 5/100
+    ----------
+    train Loss: 0.0379 Acc: 0.9868 Precision: 0.9868 F1-Score: 0.9868
+    val Loss: 0.7171 Acc: 0.8684 Precision: 0.8632 F1-Score: 0.8626
+    Neues bestes Modell gespeichert!
+    
+    Epoch 6/100
+    ----------
+    train Loss: 0.0283 Acc: 0.9904 Precision: 0.9904 F1-Score: 0.9904
+    val Loss: 0.7171 Acc: 0.8712 Precision: 0.8649 F1-Score: 0.8638
+    Neues bestes Modell gespeichert!
+    
+    Epoch 7/100
+    ----------
+    train Loss: 0.0261 Acc: 0.9906 Precision: 0.9906 F1-Score: 0.9906
+    val Loss: 0.7634 Acc: 0.8694 Precision: 0.8626 F1-Score: 0.8625
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 8/100
+    ----------
+    train Loss: 0.0243 Acc: 0.9914 Precision: 0.9914 F1-Score: 0.9914
+    val Loss: 0.7453 Acc: 0.8703 Precision: 0.8632 F1-Score: 0.8640
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 9/100
+    ----------
+    train Loss: 0.0230 Acc: 0.9922 Precision: 0.9922 F1-Score: 0.9922
+    val Loss: 0.7254 Acc: 0.8670 Precision: 0.8609 F1-Score: 0.8611
+    Keine Verbesserung seit 3 Epoche(n).
+    
+    Epoch 10/100
+    ----------
+    train Loss: 0.0201 Acc: 0.9936 Precision: 0.9936 F1-Score: 0.9936
+    val Loss: 0.7390 Acc: 0.8670 Precision: 0.8598 F1-Score: 0.8601
+    Keine Verbesserung seit 4 Epoche(n).
+    
+    Epoch 11/100
+    ----------
+    train Loss: 0.0213 Acc: 0.9929 Precision: 0.9929 F1-Score: 0.9929
+    val Loss: 0.7443 Acc: 0.8656 Precision: 0.8583 F1-Score: 0.8585
+    Keine Verbesserung seit 5 Epoche(n).
+    
+    Epoch 12/100
+    ----------
+    train Loss: 0.0181 Acc: 0.9939 Precision: 0.9939 F1-Score: 0.9939
+    val Loss: 0.7446 Acc: 0.8637 Precision: 0.8564 F1-Score: 0.8567
+    Keine Verbesserung seit 6 Epoche(n).
+    
+    Epoch 13/100
+    ----------
+    train Loss: 0.0158 Acc: 0.9947 Precision: 0.9947 F1-Score: 0.9947
+    val Loss: 0.7344 Acc: 0.8670 Precision: 0.8602 F1-Score: 0.8607
+    Keine Verbesserung seit 7 Epoche(n).
+    
+    Epoch 14/100
+    ----------
+    train Loss: 0.0172 Acc: 0.9938 Precision: 0.9938 F1-Score: 0.9938
+    val Loss: 0.7443 Acc: 0.8675 Precision: 0.8607 F1-Score: 0.8603
+    Keine Verbesserung seit 8 Epoche(n).
+    
+    Epoch 15/100
+    ----------
+    train Loss: 0.0166 Acc: 0.9956 Precision: 0.9956 F1-Score: 0.9956
+    val Loss: 0.7403 Acc: 0.8665 Precision: 0.8599 F1-Score: 0.8592
+    Keine Verbesserung seit 9 Epoche(n).
+    
+    Epoch 16/100
+    ----------
+    train Loss: 0.0130 Acc: 0.9965 Precision: 0.9965 F1-Score: 0.9965
+    val Loss: 0.7503 Acc: 0.8661 Precision: 0.8594 F1-Score: 0.8588
+    Keine Verbesserung seit 10 Epoche(n).
+    
+    Early Stopping ausgelöst! Keine Verbesserung der Validation Accuracy über 10 aufeinanderfolgende Epochen.
+    Best Val Acc: 0.8712 Precision: 0.8649 F1-Score: 0.8638
     
 
 #### Modell ResNet101 trainieren
@@ -1101,9 +926,9 @@ resNet101Model = fit(
     train_loader=train_loader, 
     val_loader=val_loader, 
     title="ResNet101 Phase 1 (Warm-Up Kopf)", 
-    num_epochs=20,             # Nur kurzes Aufwärmen
+    num_epochs=100,          
     learning_rate=0.001,       
-    early_stop_patience=5      # Kann hier sehr kurz sein
+    early_stop_patience=10
 )
 
 print("\nEntfriere das gesamte Netzwerk für das Fine-Tuning...")
@@ -1115,263 +940,447 @@ for param in resNet101Model.parameters():
     param.requires_grad = True
 
 # Jetzt starten wir das eigentliche lange Training. 
-# WICHTIG: Die Lernrate MUSS jetzt mikroskopisch klein sein, da wir das 
-# Netz nur "feinjustieren" und nicht aus dem Konzept bringen wollen!
 resNet101Model = fit(
     model=resNet101Model, 
     train_loader=train_loader, 
     val_loader=val_loader, 
     title="ResNet101 Phase 2 (Full Fine-Tuning)", 
-    num_epochs=50,             # Jetzt dürfen es mehr Epochen sein
-    learning_rate=1e-5,        # extrem wichtig für Fine-Tuning!
-    early_stop_patience=10     # Jetzt greift das eigentliche Early Stopping
+    num_epochs=100,            
+    learning_rate=0.0001,       
+    early_stop_patience=10
 )
 
 torch.save(resNet101Model.state_dict(), MODEL_RESNET101_FILE_PATH)
 ```
 
     Starte Training auf Gerät: cuda für ResNet101 Phase 1 (Warm-Up Kopf)
-    Epoch 1/20
+    Epoch 1/100
     ----------
-    train Loss: 0.9654 Acc: 0.6387 Precision: 0.6358 F1-Score: 0.6317
-    val Loss: 0.5117 Acc: 0.8195 Precision: 0.8083 F1-Score: 0.8070
+    train Loss: 0.9584 Acc: 0.6350 Precision: 0.6324 F1-Score: 0.6289
+    val Loss: 0.5241 Acc: 0.8177 Precision: 0.8229 F1-Score: 0.8164
     Neues bestes Modell gespeichert!
     
-    Epoch 2/20
+    Epoch 2/100
     ----------
-    train Loss: 0.6297 Acc: 0.7682 Precision: 0.7678 F1-Score: 0.7676
-    val Loss: 0.4876 Acc: 0.8261 Precision: 0.8283 F1-Score: 0.8259
+    train Loss: 0.6225 Acc: 0.7681 Precision: 0.7675 F1-Score: 0.7675
+    val Loss: 0.4928 Acc: 0.8327 Precision: 0.8331 F1-Score: 0.8284
     Neues bestes Modell gespeichert!
     
-    Epoch 3/20
+    Epoch 3/100
     ----------
-    train Loss: 0.5047 Acc: 0.8142 Precision: 0.8144 F1-Score: 0.8141
-    val Loss: 0.5006 Acc: 0.8261 Precision: 0.8368 F1-Score: 0.8285
+    train Loss: 0.4914 Acc: 0.8204 Precision: 0.8202 F1-Score: 0.8202
+    val Loss: 0.6846 Acc: 0.8271 Precision: 0.8197 F1-Score: 0.8183
     Keine Verbesserung seit 1 Epoche(n).
     
-    Epoch 4/20
+    Epoch 4/100
     ----------
-    train Loss: 0.4009 Acc: 0.8531 Precision: 0.8533 F1-Score: 0.8531
-    val Loss: 0.5320 Acc: 0.8214 Precision: 0.8301 F1-Score: 0.8244
+    train Loss: 0.4252 Acc: 0.8440 Precision: 0.8440 F1-Score: 0.8439
+    val Loss: 0.5141 Acc: 0.8257 Precision: 0.8392 F1-Score: 0.8292
     Keine Verbesserung seit 2 Epoche(n).
     
-    Epoch 5/20
+    Epoch 5/100
     ----------
-    train Loss: 0.3535 Acc: 0.8704 Precision: 0.8707 F1-Score: 0.8705
-    val Loss: 0.5757 Acc: 0.7989 Precision: 0.8367 F1-Score: 0.8099
+    train Loss: 0.3505 Acc: 0.8718 Precision: 0.8717 F1-Score: 0.8717
+    val Loss: 0.5504 Acc: 0.8275 Precision: 0.8451 F1-Score: 0.8318
     Keine Verbesserung seit 3 Epoche(n).
     
-    Epoch 6/20
+    Epoch 6/100
     ----------
-    train Loss: 0.2532 Acc: 0.9076 Precision: 0.9077 F1-Score: 0.9076
-    val Loss: 0.5220 Acc: 0.8369 Precision: 0.8412 F1-Score: 0.8377
+    train Loss: 0.2478 Acc: 0.9130 Precision: 0.9131 F1-Score: 0.9130
+    val Loss: 0.5514 Acc: 0.8501 Precision: 0.8433 F1-Score: 0.8452
     Neues bestes Modell gespeichert!
     
-    Epoch 7/20
+    Epoch 7/100
     ----------
-    train Loss: 0.2024 Acc: 0.9312 Precision: 0.9312 F1-Score: 0.9312
-    val Loss: 0.5460 Acc: 0.8473 Precision: 0.8399 F1-Score: 0.8418
-    Neues bestes Modell gespeichert!
-    
-    Epoch 8/20
-    ----------
-    train Loss: 0.1929 Acc: 0.9282 Precision: 0.9282 F1-Score: 0.9282
-    val Loss: 0.5530 Acc: 0.8435 Precision: 0.8432 F1-Score: 0.8426
+    train Loss: 0.2053 Acc: 0.9262 Precision: 0.9263 F1-Score: 0.9262
+    val Loss: 0.5536 Acc: 0.8379 Precision: 0.8461 F1-Score: 0.8399
     Keine Verbesserung seit 1 Epoche(n).
     
-    Epoch 9/20
+    Epoch 8/100
     ----------
-    train Loss: 0.1510 Acc: 0.9487 Precision: 0.9488 F1-Score: 0.9487
-    val Loss: 0.5701 Acc: 0.8501 Precision: 0.8434 F1-Score: 0.8435
+    train Loss: 0.1829 Acc: 0.9346 Precision: 0.9347 F1-Score: 0.9346
+    val Loss: 0.5191 Acc: 0.8510 Precision: 0.8473 F1-Score: 0.8484
     Neues bestes Modell gespeichert!
     
-    Epoch 10/20
+    Epoch 9/100
     ----------
-    train Loss: 0.1330 Acc: 0.9521 Precision: 0.9521 F1-Score: 0.9521
-    val Loss: 0.5914 Acc: 0.8581 Precision: 0.8533 F1-Score: 0.8538
+    train Loss: 0.1480 Acc: 0.9489 Precision: 0.9489 F1-Score: 0.9488
+    val Loss: 0.5676 Acc: 0.8543 Precision: 0.8489 F1-Score: 0.8494
     Neues bestes Modell gespeichert!
     
-    Epoch 11/20
+    Epoch 10/100
     ----------
-    train Loss: 0.1223 Acc: 0.9581 Precision: 0.9581 F1-Score: 0.9581
-    val Loss: 0.6077 Acc: 0.8510 Precision: 0.8441 F1-Score: 0.8455
+    train Loss: 0.1375 Acc: 0.9509 Precision: 0.9510 F1-Score: 0.9509
+    val Loss: 0.5453 Acc: 0.8524 Precision: 0.8462 F1-Score: 0.8474
     Keine Verbesserung seit 1 Epoche(n).
     
-    Epoch 12/20
+    Epoch 11/100
     ----------
-    train Loss: 0.1057 Acc: 0.9644 Precision: 0.9644 F1-Score: 0.9644
-    val Loss: 0.6071 Acc: 0.8557 Precision: 0.8480 F1-Score: 0.8496
+    train Loss: 0.1240 Acc: 0.9564 Precision: 0.9564 F1-Score: 0.9564
+    val Loss: 0.5450 Acc: 0.8543 Precision: 0.8532 F1-Score: 0.8534
     Keine Verbesserung seit 2 Epoche(n).
     
-    Epoch 13/20
+    Epoch 12/100
     ----------
-    train Loss: 0.0955 Acc: 0.9654 Precision: 0.9654 F1-Score: 0.9654
-    val Loss: 0.5831 Acc: 0.8506 Precision: 0.8450 F1-Score: 0.8465
+    train Loss: 0.0992 Acc: 0.9654 Precision: 0.9655 F1-Score: 0.9654
+    val Loss: 0.6326 Acc: 0.8567 Precision: 0.8494 F1-Score: 0.8471
+    Neues bestes Modell gespeichert!
+    
+    Epoch 13/100
+    ----------
+    train Loss: 0.0954 Acc: 0.9668 Precision: 0.9668 F1-Score: 0.9668
+    val Loss: 0.5595 Acc: 0.8647 Precision: 0.8584 F1-Score: 0.8599
+    Neues bestes Modell gespeichert!
+    
+    Epoch 14/100
+    ----------
+    train Loss: 0.0844 Acc: 0.9697 Precision: 0.9697 F1-Score: 0.9697
+    val Loss: 0.5889 Acc: 0.8647 Precision: 0.8589 F1-Score: 0.8596
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 15/100
+    ----------
+    train Loss: 0.0806 Acc: 0.9741 Precision: 0.9741 F1-Score: 0.9741
+    val Loss: 0.6162 Acc: 0.8604 Precision: 0.8539 F1-Score: 0.8552
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 16/100
+    ----------
+    train Loss: 0.0836 Acc: 0.9711 Precision: 0.9711 F1-Score: 0.9711
+    val Loss: 0.5643 Acc: 0.8618 Precision: 0.8565 F1-Score: 0.8577
     Keine Verbesserung seit 3 Epoche(n).
     
-    Epoch 14/20
+    Epoch 17/100
     ----------
-    train Loss: 0.0895 Acc: 0.9670 Precision: 0.9670 F1-Score: 0.9670
-    val Loss: 0.6080 Acc: 0.8510 Precision: 0.8446 F1-Score: 0.8464
+    train Loss: 0.0737 Acc: 0.9748 Precision: 0.9748 F1-Score: 0.9748
+    val Loss: 0.6049 Acc: 0.8628 Precision: 0.8557 F1-Score: 0.8562
     Keine Verbesserung seit 4 Epoche(n).
     
-    Epoch 15/20
+    Epoch 18/100
     ----------
-    train Loss: 0.0866 Acc: 0.9707 Precision: 0.9707 F1-Score: 0.9707
-    val Loss: 0.6379 Acc: 0.8553 Precision: 0.8476 F1-Score: 0.8476
-    Keine Verbesserung seit 5 Epoche(n).
-    
-    Early Stopping ausgelöst! Keine Verbesserung der Validation Accuracy über 5 aufeinanderfolgende Epochen.
-    Best Val Acc: 0.8581 Precision: 0.8533 F1-Score: 0.8538
-    
-    Entfriere das gesamte Netzwerk für das Fine-Tuning...
-    Starte Training auf Gerät: cuda für ResNet101 Phase 2 (Full Fine-Tuning)
-    Epoch 1/50
-    ----------
-    train Loss: 0.1052 Acc: 0.9623 Precision: 0.9623 F1-Score: 0.9623
-    val Loss: 0.5617 Acc: 0.8586 Precision: 0.8544 F1-Score: 0.8559
+    train Loss: 0.0745 Acc: 0.9738 Precision: 0.9738 F1-Score: 0.9738
+    val Loss: 0.5913 Acc: 0.8665 Precision: 0.8603 F1-Score: 0.8619
     Neues bestes Modell gespeichert!
     
-    Epoch 2/50
+    Epoch 19/100
     ----------
-    train Loss: 0.0946 Acc: 0.9685 Precision: 0.9686 F1-Score: 0.9685
-    val Loss: 0.5467 Acc: 0.8586 Precision: 0.8522 F1-Score: 0.8535
+    train Loss: 0.0742 Acc: 0.9743 Precision: 0.9743 F1-Score: 0.9743
+    val Loss: 0.6128 Acc: 0.8637 Precision: 0.8572 F1-Score: 0.8574
     Keine Verbesserung seit 1 Epoche(n).
     
-    Epoch 3/50
+    Epoch 20/100
     ----------
-    train Loss: 0.0804 Acc: 0.9710 Precision: 0.9710 F1-Score: 0.9710
-    val Loss: 0.5790 Acc: 0.8586 Precision: 0.8521 F1-Score: 0.8536
-    Keine Verbesserung seit 2 Epoche(n).
-    
-    Epoch 4/50
-    ----------
-    train Loss: 0.0720 Acc: 0.9762 Precision: 0.9762 F1-Score: 0.9762
-    val Loss: 0.5979 Acc: 0.8600 Precision: 0.8525 F1-Score: 0.8537
+    train Loss: 0.0650 Acc: 0.9781 Precision: 0.9781 F1-Score: 0.9781
+    val Loss: 0.6387 Acc: 0.8670 Precision: 0.8614 F1-Score: 0.8610
     Neues bestes Modell gespeichert!
     
-    Epoch 5/50
+    Epoch 21/100
     ----------
-    train Loss: 0.0696 Acc: 0.9767 Precision: 0.9767 F1-Score: 0.9767
-    val Loss: 0.5816 Acc: 0.8633 Precision: 0.8566 F1-Score: 0.8578
-    Neues bestes Modell gespeichert!
-    
-    Epoch 6/50
-    ----------
-    train Loss: 0.0597 Acc: 0.9796 Precision: 0.9796 F1-Score: 0.9795
-    val Loss: 0.5860 Acc: 0.8675 Precision: 0.8613 F1-Score: 0.8623
-    Neues bestes Modell gespeichert!
-    
-    Epoch 7/50
-    ----------
-    train Loss: 0.0602 Acc: 0.9805 Precision: 0.9805 F1-Score: 0.9805
-    val Loss: 0.6033 Acc: 0.8618 Precision: 0.8549 F1-Score: 0.8558
+    train Loss: 0.0633 Acc: 0.9776 Precision: 0.9776 F1-Score: 0.9776
+    val Loss: 0.6192 Acc: 0.8647 Precision: 0.8588 F1-Score: 0.8603
     Keine Verbesserung seit 1 Epoche(n).
     
-    Epoch 8/50
+    Epoch 22/100
     ----------
-    train Loss: 0.0541 Acc: 0.9828 Precision: 0.9828 F1-Score: 0.9828
-    val Loss: 0.6053 Acc: 0.8618 Precision: 0.8546 F1-Score: 0.8549
+    train Loss: 0.0651 Acc: 0.9764 Precision: 0.9764 F1-Score: 0.9764
+    val Loss: 0.6027 Acc: 0.8642 Precision: 0.8583 F1-Score: 0.8597
     Keine Verbesserung seit 2 Epoche(n).
     
-    Epoch 9/50
+    Epoch 23/100
     ----------
-    train Loss: 0.0538 Acc: 0.9832 Precision: 0.9832 F1-Score: 0.9832
-    val Loss: 0.6081 Acc: 0.8628 Precision: 0.8554 F1-Score: 0.8556
+    train Loss: 0.0621 Acc: 0.9774 Precision: 0.9774 F1-Score: 0.9774
+    val Loss: 0.6228 Acc: 0.8680 Precision: 0.8619 F1-Score: 0.8622
+    Neues bestes Modell gespeichert!
+    
+    Epoch 24/100
+    ----------
+    train Loss: 0.0627 Acc: 0.9777 Precision: 0.9777 F1-Score: 0.9777
+    val Loss: 0.5993 Acc: 0.8661 Precision: 0.8602 F1-Score: 0.8616
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 25/100
+    ----------
+    train Loss: 0.0662 Acc: 0.9770 Precision: 0.9771 F1-Score: 0.9770
+    val Loss: 0.6108 Acc: 0.8665 Precision: 0.8599 F1-Score: 0.8611
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 26/100
+    ----------
+    train Loss: 0.0601 Acc: 0.9786 Precision: 0.9786 F1-Score: 0.9786
+    val Loss: 0.6046 Acc: 0.8736 Precision: 0.8676 F1-Score: 0.8684
+    Neues bestes Modell gespeichert!
+    
+    Epoch 27/100
+    ----------
+    train Loss: 0.0604 Acc: 0.9802 Precision: 0.9802 F1-Score: 0.9802
+    val Loss: 0.5934 Acc: 0.8680 Precision: 0.8624 F1-Score: 0.8639
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 28/100
+    ----------
+    train Loss: 0.0625 Acc: 0.9786 Precision: 0.9786 F1-Score: 0.9786
+    val Loss: 0.6104 Acc: 0.8670 Precision: 0.8604 F1-Score: 0.8615
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 29/100
+    ----------
+    train Loss: 0.0602 Acc: 0.9788 Precision: 0.9788 F1-Score: 0.9788
+    val Loss: 0.6223 Acc: 0.8675 Precision: 0.8614 F1-Score: 0.8616
     Keine Verbesserung seit 3 Epoche(n).
     
-    Epoch 10/50
+    Epoch 30/100
     ----------
-    train Loss: 0.0474 Acc: 0.9858 Precision: 0.9858 F1-Score: 0.9858
-    val Loss: 0.5934 Acc: 0.8651 Precision: 0.8583 F1-Score: 0.8589
+    train Loss: 0.0631 Acc: 0.9790 Precision: 0.9790 F1-Score: 0.9790
+    val Loss: 0.6094 Acc: 0.8647 Precision: 0.8580 F1-Score: 0.8586
     Keine Verbesserung seit 4 Epoche(n).
     
-    Epoch 11/50
+    Epoch 31/100
     ----------
-    train Loss: 0.0479 Acc: 0.9832 Precision: 0.9833 F1-Score: 0.9832
-    val Loss: 0.6090 Acc: 0.8637 Precision: 0.8570 F1-Score: 0.8568
+    train Loss: 0.0626 Acc: 0.9784 Precision: 0.9784 F1-Score: 0.9784
+    val Loss: 0.6072 Acc: 0.8675 Precision: 0.8606 F1-Score: 0.8611
     Keine Verbesserung seit 5 Epoche(n).
     
-    Epoch 12/50
+    Epoch 32/100
     ----------
-    train Loss: 0.0486 Acc: 0.9834 Precision: 0.9834 F1-Score: 0.9834
-    val Loss: 0.5906 Acc: 0.8651 Precision: 0.8582 F1-Score: 0.8591
+    train Loss: 0.0612 Acc: 0.9794 Precision: 0.9794 F1-Score: 0.9794
+    val Loss: 0.6042 Acc: 0.8675 Precision: 0.8612 F1-Score: 0.8624
     Keine Verbesserung seit 6 Epoche(n).
     
-    Epoch 13/50
+    Epoch 33/100
     ----------
-    train Loss: 0.0470 Acc: 0.9855 Precision: 0.9855 F1-Score: 0.9855
-    val Loss: 0.5988 Acc: 0.8628 Precision: 0.8558 F1-Score: 0.8567
+    train Loss: 0.0569 Acc: 0.9806 Precision: 0.9806 F1-Score: 0.9806
+    val Loss: 0.6107 Acc: 0.8651 Precision: 0.8589 F1-Score: 0.8600
     Keine Verbesserung seit 7 Epoche(n).
     
-    Epoch 14/50
+    Epoch 34/100
     ----------
-    train Loss: 0.0475 Acc: 0.9848 Precision: 0.9848 F1-Score: 0.9848
-    val Loss: 0.5906 Acc: 0.8694 Precision: 0.8636 F1-Score: 0.8642
-    Neues bestes Modell gespeichert!
-    
-    Epoch 15/50
-    ----------
-    train Loss: 0.0467 Acc: 0.9842 Precision: 0.9842 F1-Score: 0.9842
-    val Loss: 0.5972 Acc: 0.8656 Precision: 0.8590 F1-Score: 0.8602
-    Keine Verbesserung seit 1 Epoche(n).
-    
-    Epoch 16/50
-    ----------
-    train Loss: 0.0482 Acc: 0.9840 Precision: 0.9841 F1-Score: 0.9840
-    val Loss: 0.6102 Acc: 0.8642 Precision: 0.8580 F1-Score: 0.8583
-    Keine Verbesserung seit 2 Epoche(n).
-    
-    Epoch 17/50
-    ----------
-    train Loss: 0.0494 Acc: 0.9840 Precision: 0.9840 F1-Score: 0.9840
-    val Loss: 0.5971 Acc: 0.8670 Precision: 0.8611 F1-Score: 0.8622
-    Keine Verbesserung seit 3 Epoche(n).
-    
-    Epoch 18/50
-    ----------
-    train Loss: 0.0459 Acc: 0.9843 Precision: 0.9843 F1-Score: 0.9843
-    val Loss: 0.5890 Acc: 0.8684 Precision: 0.8625 F1-Score: 0.8640
-    Keine Verbesserung seit 4 Epoche(n).
-    
-    Epoch 19/50
-    ----------
-    train Loss: 0.0440 Acc: 0.9856 Precision: 0.9856 F1-Score: 0.9856
-    val Loss: 0.5912 Acc: 0.8647 Precision: 0.8585 F1-Score: 0.8596
-    Keine Verbesserung seit 5 Epoche(n).
-    
-    Epoch 20/50
-    ----------
-    train Loss: 0.0411 Acc: 0.9855 Precision: 0.9855 F1-Score: 0.9855
-    val Loss: 0.6117 Acc: 0.8642 Precision: 0.8571 F1-Score: 0.8579
-    Keine Verbesserung seit 6 Epoche(n).
-    
-    Epoch 21/50
-    ----------
-    train Loss: 0.0445 Acc: 0.9850 Precision: 0.9850 F1-Score: 0.9850
-    val Loss: 0.6046 Acc: 0.8670 Precision: 0.8606 F1-Score: 0.8615
-    Keine Verbesserung seit 7 Epoche(n).
-    
-    Epoch 22/50
-    ----------
-    train Loss: 0.0432 Acc: 0.9847 Precision: 0.9847 F1-Score: 0.9847
-    val Loss: 0.6074 Acc: 0.8656 Precision: 0.8588 F1-Score: 0.8594
+    train Loss: 0.0629 Acc: 0.9789 Precision: 0.9789 F1-Score: 0.9789
+    val Loss: 0.5969 Acc: 0.8694 Precision: 0.8632 F1-Score: 0.8646
     Keine Verbesserung seit 8 Epoche(n).
     
-    Epoch 23/50
+    Epoch 35/100
     ----------
-    train Loss: 0.0445 Acc: 0.9852 Precision: 0.9852 F1-Score: 0.9852
-    val Loss: 0.6060 Acc: 0.8642 Precision: 0.8574 F1-Score: 0.8584
+    train Loss: 0.0569 Acc: 0.9792 Precision: 0.9793 F1-Score: 0.9792
+    val Loss: 0.6015 Acc: 0.8647 Precision: 0.8579 F1-Score: 0.8594
     Keine Verbesserung seit 9 Epoche(n).
     
-    Epoch 24/50
+    Epoch 36/100
     ----------
-    train Loss: 0.0456 Acc: 0.9856 Precision: 0.9856 F1-Score: 0.9856
-    val Loss: 0.6164 Acc: 0.8651 Precision: 0.8586 F1-Score: 0.8589
+    train Loss: 0.0656 Acc: 0.9773 Precision: 0.9773 F1-Score: 0.9773
+    val Loss: 0.6367 Acc: 0.8656 Precision: 0.8589 F1-Score: 0.8597
     Keine Verbesserung seit 10 Epoche(n).
     
     Early Stopping ausgelöst! Keine Verbesserung der Validation Accuracy über 10 aufeinanderfolgende Epochen.
-    Best Val Acc: 0.8694 Precision: 0.8636 F1-Score: 0.8642
+    Best Val Acc: 0.8736 Precision: 0.8676 F1-Score: 0.8684
+    
+    Entfriere das gesamte Netzwerk für das Fine-Tuning...
+    Starte Training auf Gerät: cuda für ResNet101 Phase 2 (Full Fine-Tuning)
+    Epoch 1/100
+    ----------
+    train Loss: 0.1186 Acc: 0.9564 Precision: 0.9564 F1-Score: 0.9564
+    val Loss: 0.5698 Acc: 0.8543 Precision: 0.8549 F1-Score: 0.8536
+    Neues bestes Modell gespeichert!
+    
+    Epoch 2/100
+    ----------
+    train Loss: 0.0985 Acc: 0.9659 Precision: 0.9659 F1-Score: 0.9659
+    val Loss: 0.5546 Acc: 0.8712 Precision: 0.8669 F1-Score: 0.8667
+    Neues bestes Modell gespeichert!
+    
+    Epoch 3/100
+    ----------
+    train Loss: 0.0731 Acc: 0.9744 Precision: 0.9745 F1-Score: 0.9744
+    val Loss: 0.6036 Acc: 0.8633 Precision: 0.8568 F1-Score: 0.8561
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 4/100
+    ----------
+    train Loss: 0.0608 Acc: 0.9790 Precision: 0.9790 F1-Score: 0.9790
+    val Loss: 0.4981 Acc: 0.8797 Precision: 0.8776 F1-Score: 0.8784
+    Neues bestes Modell gespeichert!
+    
+    Epoch 5/100
+    ----------
+    train Loss: 0.0638 Acc: 0.9783 Precision: 0.9783 F1-Score: 0.9783
+    val Loss: 0.5429 Acc: 0.8722 Precision: 0.8674 F1-Score: 0.8686
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 6/100
+    ----------
+    train Loss: 0.0555 Acc: 0.9806 Precision: 0.9806 F1-Score: 0.9806
+    val Loss: 0.5452 Acc: 0.8727 Precision: 0.8672 F1-Score: 0.8681
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 7/100
+    ----------
+    train Loss: 0.0515 Acc: 0.9831 Precision: 0.9831 F1-Score: 0.9831
+    val Loss: 0.5652 Acc: 0.8830 Precision: 0.8808 F1-Score: 0.8804
+    Neues bestes Modell gespeichert!
+    
+    Epoch 8/100
+    ----------
+    train Loss: 0.0363 Acc: 0.9877 Precision: 0.9877 F1-Score: 0.9877
+    val Loss: 0.5845 Acc: 0.8811 Precision: 0.8761 F1-Score: 0.8753
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 9/100
+    ----------
+    train Loss: 0.0209 Acc: 0.9933 Precision: 0.9933 F1-Score: 0.9933
+    val Loss: 0.5835 Acc: 0.8830 Precision: 0.8783 F1-Score: 0.8788
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 10/100
+    ----------
+    train Loss: 0.0185 Acc: 0.9940 Precision: 0.9940 F1-Score: 0.9940
+    val Loss: 0.6337 Acc: 0.8820 Precision: 0.8771 F1-Score: 0.8766
+    Keine Verbesserung seit 3 Epoche(n).
+    
+    Epoch 11/100
+    ----------
+    train Loss: 0.0155 Acc: 0.9950 Precision: 0.9950 F1-Score: 0.9950
+    val Loss: 0.6109 Acc: 0.8835 Precision: 0.8785 F1-Score: 0.8781
+    Neues bestes Modell gespeichert!
+    
+    Epoch 12/100
+    ----------
+    train Loss: 0.0135 Acc: 0.9955 Precision: 0.9955 F1-Score: 0.9955
+    val Loss: 0.6627 Acc: 0.8835 Precision: 0.8792 F1-Score: 0.8779
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 13/100
+    ----------
+    train Loss: 0.0094 Acc: 0.9971 Precision: 0.9971 F1-Score: 0.9971
+    val Loss: 0.7095 Acc: 0.8783 Precision: 0.8743 F1-Score: 0.8703
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 14/100
+    ----------
+    train Loss: 0.0081 Acc: 0.9976 Precision: 0.9976 F1-Score: 0.9976
+    val Loss: 0.6793 Acc: 0.8844 Precision: 0.8802 F1-Score: 0.8776
+    Neues bestes Modell gespeichert!
+    
+    Epoch 15/100
+    ----------
+    train Loss: 0.0057 Acc: 0.9981 Precision: 0.9981 F1-Score: 0.9981
+    val Loss: 0.6671 Acc: 0.8849 Precision: 0.8805 F1-Score: 0.8788
+    Neues bestes Modell gespeichert!
+    
+    Epoch 16/100
+    ----------
+    train Loss: 0.0080 Acc: 0.9976 Precision: 0.9976 F1-Score: 0.9976
+    val Loss: 0.6605 Acc: 0.8877 Precision: 0.8844 F1-Score: 0.8821
+    Neues bestes Modell gespeichert!
+    
+    Epoch 17/100
+    ----------
+    train Loss: 0.0068 Acc: 0.9977 Precision: 0.9977 F1-Score: 0.9977
+    val Loss: 0.6631 Acc: 0.8872 Precision: 0.8834 F1-Score: 0.8809
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 18/100
+    ----------
+    train Loss: 0.0050 Acc: 0.9985 Precision: 0.9985 F1-Score: 0.9985
+    val Loss: 0.6835 Acc: 0.8872 Precision: 0.8830 F1-Score: 0.8810
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 19/100
+    ----------
+    train Loss: 0.0050 Acc: 0.9983 Precision: 0.9983 F1-Score: 0.9983
+    val Loss: 0.6936 Acc: 0.8863 Precision: 0.8824 F1-Score: 0.8797
+    Keine Verbesserung seit 3 Epoche(n).
+    
+    Epoch 20/100
+    ----------
+    train Loss: 0.0045 Acc: 0.9989 Precision: 0.9989 F1-Score: 0.9989
+    val Loss: 0.6739 Acc: 0.8882 Precision: 0.8838 F1-Score: 0.8816
+    Neues bestes Modell gespeichert!
+    
+    Epoch 21/100
+    ----------
+    train Loss: 0.0042 Acc: 0.9989 Precision: 0.9989 F1-Score: 0.9989
+    val Loss: 0.6733 Acc: 0.8867 Precision: 0.8823 F1-Score: 0.8806
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 22/100
+    ----------
+    train Loss: 0.0038 Acc: 0.9989 Precision: 0.9989 F1-Score: 0.9989
+    val Loss: 0.6984 Acc: 0.8839 Precision: 0.8794 F1-Score: 0.8776
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 23/100
+    ----------
+    train Loss: 0.0044 Acc: 0.9990 Precision: 0.9990 F1-Score: 0.9990
+    val Loss: 0.6884 Acc: 0.8867 Precision: 0.8831 F1-Score: 0.8809
+    Keine Verbesserung seit 3 Epoche(n).
+    
+    Epoch 24/100
+    ----------
+    train Loss: 0.0038 Acc: 0.9987 Precision: 0.9987 F1-Score: 0.9987
+    val Loss: 0.6813 Acc: 0.8910 Precision: 0.8870 F1-Score: 0.8848
+    Neues bestes Modell gespeichert!
+    
+    Epoch 25/100
+    ----------
+    train Loss: 0.0046 Acc: 0.9989 Precision: 0.9989 F1-Score: 0.9989
+    val Loss: 0.6964 Acc: 0.8863 Precision: 0.8820 F1-Score: 0.8797
+    Keine Verbesserung seit 1 Epoche(n).
+    
+    Epoch 26/100
+    ----------
+    train Loss: 0.0044 Acc: 0.9988 Precision: 0.9988 F1-Score: 0.9988
+    val Loss: 0.6884 Acc: 0.8877 Precision: 0.8836 F1-Score: 0.8814
+    Keine Verbesserung seit 2 Epoche(n).
+    
+    Epoch 27/100
+    ----------
+    train Loss: 0.0044 Acc: 0.9987 Precision: 0.9987 F1-Score: 0.9987
+    val Loss: 0.7022 Acc: 0.8863 Precision: 0.8825 F1-Score: 0.8798
+    Keine Verbesserung seit 3 Epoche(n).
+    
+    Epoch 28/100
+    ----------
+    train Loss: 0.0037 Acc: 0.9989 Precision: 0.9989 F1-Score: 0.9989
+    val Loss: 0.6997 Acc: 0.8853 Precision: 0.8810 F1-Score: 0.8787
+    Keine Verbesserung seit 4 Epoche(n).
+    
+    Epoch 29/100
+    ----------
+    train Loss: 0.0045 Acc: 0.9987 Precision: 0.9987 F1-Score: 0.9987
+    val Loss: 0.6871 Acc: 0.8872 Precision: 0.8832 F1-Score: 0.8809
+    Keine Verbesserung seit 5 Epoche(n).
+    
+    Epoch 30/100
+    ----------
+    train Loss: 0.0035 Acc: 0.9990 Precision: 0.9990 F1-Score: 0.9990
+    val Loss: 0.6902 Acc: 0.8863 Precision: 0.8818 F1-Score: 0.8798
+    Keine Verbesserung seit 6 Epoche(n).
+    
+    Epoch 31/100
+    ----------
+    train Loss: 0.0025 Acc: 0.9996 Precision: 0.9996 F1-Score: 0.9996
+    val Loss: 0.6648 Acc: 0.8900 Precision: 0.8861 F1-Score: 0.8847
+    Keine Verbesserung seit 7 Epoche(n).
+    
+    Epoch 32/100
+    ----------
+    train Loss: 0.0045 Acc: 0.9986 Precision: 0.9986 F1-Score: 0.9986
+    val Loss: 0.7215 Acc: 0.8853 Precision: 0.8812 F1-Score: 0.8780
+    Keine Verbesserung seit 8 Epoche(n).
+    
+    Epoch 33/100
+    ----------
+    train Loss: 0.0034 Acc: 0.9992 Precision: 0.9992 F1-Score: 0.9992
+    val Loss: 0.6986 Acc: 0.8858 Precision: 0.8817 F1-Score: 0.8790
+    Keine Verbesserung seit 9 Epoche(n).
+    
+    Epoch 34/100
+    ----------
+    train Loss: 0.0038 Acc: 0.9991 Precision: 0.9991 F1-Score: 0.9991
+    val Loss: 0.7017 Acc: 0.8849 Precision: 0.8804 F1-Score: 0.8781
+    Keine Verbesserung seit 10 Epoche(n).
+    
+    Early Stopping ausgelöst! Keine Verbesserung der Validation Accuracy über 10 aufeinanderfolgende Epochen.
+    Best Val Acc: 0.8910 Precision: 0.8870 F1-Score: 0.8848
     
 
 ## 5. Vortrainierte Modelle laden
@@ -1386,9 +1395,9 @@ loaded_data_mobilenetv3 = torch.load(MODEL_MOBILE_NET_V3_FILE_PATH)
 mobileNetV3Model.load_state_dict(loaded_data_mobilenetv3)
 ```
 
-    C:\Users\jalle\AppData\Local\Temp\ipykernel_26084\2924343579.py:1: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+    C:\Users\jalle\AppData\Local\Temp\ipykernel_9192\2924343579.py:1: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
       loaded_data_resnet101 = torch.load(MODEL_RESNET101_FILE_PATH)
-    C:\Users\jalle\AppData\Local\Temp\ipykernel_26084\2924343579.py:4: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+    C:\Users\jalle\AppData\Local\Temp\ipykernel_9192\2924343579.py:4: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
       loaded_data_mobilenetv3 = torch.load(MODEL_MOBILE_NET_V3_FILE_PATH)
     
 
@@ -1470,38 +1479,38 @@ def evaluateTestData(model, title):
     plt.tight_layout()
     plt.show()
 
-evaluateTestData(resNet101Model, "ResNet101")
+evaluateTestData(resNet101Model, "ResNet-101")
 evaluateTestData(mobileNetV3Model, "MobileNetV3")
 ```
 
-    Starte Evaluation für ResNet101 auf dem Testdatensatz...
+    Starte Evaluation für ResNet-101 auf dem Testdatensatz...
     
-    === Gesamtergebnis für ResNet101 ===
-    Test Accuracy: 0.8743 (87.43%)
+    === Gesamtergebnis für ResNet-101 ===
+    Test Accuracy: 0.8902 (89.02%)
     
     === Detaillierter Klassifikationsbericht ===
                   precision    recall  f1-score   support
     
-           akiec     0.7308    0.7755    0.7525        49
-             bcc     0.8101    0.8312    0.8205        77
-             bkl     0.7857    0.7333    0.7586       165
-              df     0.8571    0.7059    0.7742        17
-             mel     0.7615    0.5928    0.6667       167
-              nv     0.9118    0.9553    0.9330      1006
-            vasc     0.9500    0.8636    0.9048        22
+           akiec     0.8367    0.8367    0.8367        49
+             bcc     0.9041    0.8571    0.8800        77
+             bkl     0.8311    0.7455    0.7859       165
+              df     0.9286    0.7647    0.8387        17
+             mel     0.8205    0.5749    0.6761       167
+              nv     0.9058    0.9751    0.9392      1006
+            vasc     0.9474    0.8182    0.8780        22
     
-        accuracy                         0.8743      1503
-       macro avg     0.8296    0.7797    0.8015      1503
-    weighted avg     0.8701    0.8743    0.8704      1503
+        accuracy                         0.8902      1503
+       macro avg     0.8820    0.7960    0.8335      1503
+    weighted avg     0.8867    0.8902    0.8847      1503
     
-    Erstelle Confusion Matrix für ResNet101...
-    array([[ 38,   2,   4,   0,   2,   3,   0],
-           [  3,  64,   4,   1,   1,   4,   0],
-           [  8,   3, 121,   0,   5,  28,   0],
-           [  0,   1,   1,  12,   0,   3,   0],
-           [  1,   2,   9,   1,  99,  55,   0],
-           [  2,   6,  14,   0,  22, 961,   1],
-           [  0,   1,   1,   0,   1,   0,  19]], dtype=int64)
+    Erstelle Confusion Matrix für ResNet-101...
+    array([[ 41,   0,   2,   0,   4,   2,   0],
+           [  2,  66,   5,   0,   0,   4,   0],
+           [  6,   2, 123,   0,   5,  29,   0],
+           [  0,   1,   0,  13,   0,   3,   0],
+           [  0,   1,   8,   0,  96,  62,   0],
+           [  0,   2,  10,   1,  11, 981,   1],
+           [  0,   1,   0,   0,   1,   2,  18]], dtype=int64)
     
     ========================================
     
@@ -1516,31 +1525,31 @@ evaluateTestData(mobileNetV3Model, "MobileNetV3")
     Starte Evaluation für MobileNetV3 auf dem Testdatensatz...
     
     === Gesamtergebnis für MobileNetV3 ===
-    Test Accuracy: 0.8323 (83.23%)
+    Test Accuracy: 0.8616 (86.16%)
     
     === Detaillierter Klassifikationsbericht ===
                   precision    recall  f1-score   support
     
-           akiec     0.6591    0.5918    0.6237        49
-             bcc     0.6883    0.6883    0.6883        77
-             bkl     0.6500    0.7091    0.6783       165
-              df     0.8182    0.5294    0.6429        17
-             mel     0.6357    0.5329    0.5798       167
-              nv     0.9070    0.9304    0.9185      1006
+           akiec     0.6604    0.7143    0.6863        49
+             bcc     0.8529    0.7532    0.8000        77
+             bkl     0.7654    0.7515    0.7584       165
+              df     0.8750    0.8235    0.8485        17
+             mel     0.7391    0.5090    0.6028       167
+              nv     0.8981    0.9553    0.9258      1006
             vasc     0.9474    0.8182    0.8780        22
     
-        accuracy                         0.8323      1503
-       macro avg     0.7579    0.6857    0.7156      1503
-    weighted avg     0.8289    0.8323    0.8294      1503
+        accuracy                         0.8616      1503
+       macro avg     0.8198    0.7607    0.7857      1503
+    weighted avg     0.8563    0.8616    0.8557      1503
     
     Erstelle Confusion Matrix für MobileNetV3...
-    array([[ 29,   5,  11,   0,   3,   1,   0],
-           [  2,  53,   6,   1,   5,   9,   1],
-           [  9,   5, 117,   1,   7,  26,   0],
-           [  0,   4,   0,   9,   1,   3,   0],
-           [  3,   2,  18,   0,  89,  55,   0],
-           [  1,   8,  27,   0,  34, 936,   0],
-           [  0,   0,   1,   0,   1,   2,  18]], dtype=int64)
+    array([[ 35,   3,   4,   0,   3,   4,   0],
+           [  3,  58,   4,   0,   2,  10,   0],
+           [ 10,   2, 124,   0,   3,  26,   0],
+           [  0,   0,   0,  14,   1,   2,   0],
+           [  2,   2,  13,   0,  85,  65,   0],
+           [  3,   3,  17,   2,  19, 961,   1],
+           [  0,   0,   0,   0,   2,   2,  18]], dtype=int64)
     
     ========================================
     
@@ -1606,8 +1615,6 @@ Für die objektive Bewertung der XAI-Verfahren nutzen wir das Quantus-Framework.
 
 
 ```python
-import quantus
-
 # QUANTUS-BUGFIX
 def patched_perturb_func(arr, mask, **kwargs):
     """
@@ -1619,27 +1626,28 @@ def patched_perturb_func(arr, mask, **kwargs):
         
     return quantus.functions.perturb_func.baseline_replacement_by_mask(arr, mask, **kwargs)
 
-# FAITHFULNESS
-metric_irof = quantus.IROF(
-    #perturb_baseline="mean", is default =>  Rieger und Hansen betonen, dass es essenziell ist, die entfernten Bildsegmente durch den Mittelwert des Datensatzes zu ersetzen und nicht durch Rauschen (Uniform Noise) oder schwarze Pixel
-#. Rauschen würde das Bild so stark verfälschen, dass es außerhalb der gelernten Datenverteilung ("out-of-distribution") liegt
-#. Man würde dann nicht mehr messen, ob das Feature wichtig war, sondern nur, dass das CNN durch künstliches Rauschen verwirrt wird
-
-    perturb_func=patched_perturb_func,
-    return_aggregate=False,
-    disable_warnings=True
-)
-
-# ROBUSTNESS
-metric_robustness = quantus.LocalLipschitzEstimate(
-    nr_samples=20,  # EMPFEHLUNG 20: Anlehung an Sangwan "Runs=20"
-    disable_warnings=True
-)
-
-metrics = {
-    "Faithfulness": metric_irof,
-    "Robustness": metric_robustness
-}
+def getMetrics(nr_samples=20):
+    # FAITHFULNESS
+    metric_irof = quantus.IROF(
+        #perturb_baseline="mean", is default =>  Rieger und Hansen betonen, dass es essenziell ist, die entfernten Bildsegmente durch den Mittelwert des Datensatzes zu ersetzen und nicht durch Rauschen (Uniform Noise) oder schwarze Pixel
+    #. Rauschen würde das Bild so stark verfälschen, dass es außerhalb der gelernten Datenverteilung ("out-of-distribution") liegt
+    #. Man würde dann nicht mehr messen, ob das Feature wichtig war, sondern nur, dass das CNN durch künstliches Rauschen verwirrt wird
+    
+        perturb_func=patched_perturb_func,
+        return_aggregate=False,
+        disable_warnings=True
+    )
+    
+    # ROBUSTNESS
+    metric_robustness = quantus.LocalLipschitzEstimate(
+        nr_samples=nr_samples, 
+        disable_warnings=True
+    )
+    
+    return {
+        "Faithfulness": metric_irof,
+        "Robustness": metric_robustness
+    }
 ```
 
 ### Helferfunktionen
@@ -1663,93 +1671,73 @@ def score_display_helper(scores):
     print(f"    Einzel-Scores: [{scores_str}]")
 ```
 
-
-```python
-# Box-Plot Helferfunkton
-def plot_xai_comparison(results_gradcam, results_lime, metric_name):
-    # Ergebnisse zusammenführen
-    data = [results_gradcam, results_lime]
-    labels = ['Grad-CAM', 'LIME']
-    
-    plt.figure(figsize=(8, 6))
-    
-    # Den Box-and-Whisker-Plot erstellen
-    bp = plt.boxplot(data, tick_labels=labels, patch_artist=True)
-    
-    # Ein bisschen Farbe für die Thesis
-    colors = ['#005EA6', '#FFB6C1'] # blau für Grad-CAM, Hellrosa für LIME
-    for patch, color in zip(bp['boxes'], colors):
-        patch.set_facecolor(color)
-        
-    plt.title(f'Vergleich: {metric_name}', fontsize=14)
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-    
-    plt.tight_layout()
-    plt.show()
-```
-
 ### Definiere Lime
 Als Repräsentant der perturbationsbasierten Ansätze implementieren wir hier LIME (Local Interpretable Model-agnostic Explanations). LIME behandelt das CNN als Black-Box, unterteilt das Bild in Superpixel und maskiert diese systematisch, um zu messen, wie sich die Modellvorhersage verändert. Die Hyperparameter (Anzahl der Segmente und Perturbationen) sind kritisch für die Qualität der Erklärung.
 
 
 ```python
-def get_lime_explainer(model):
-    # LIME benötigt ein lokales, interpretierbares Modell (Standard: Lineare Regression)
-    explainer = Lime(model, interpretable_model=SkLearnLinearRegression())
+# Überschreibe die tqdm-Funktion in lime_image mit einer Funktion, 
+# die die Daten einfach direkt und geräuschlos durchreicht
+lime_image.tqdm = lambda x, **kwargs: x
+
+def get_lime_explainer(model, num_samples=1000, num_features=10000000000):
+   # Initialisierung des offiziellen LIME-Image-Explainers https://github.com/marcotcr/lime
+    explainer = lime_image.LimeImageExplainer()
 
     def wrapper(model, inputs, targets, **kwargs):
         model.eval()
-        inputs = torch.as_tensor(inputs, device=device)
-        targets = torch.as_tensor(targets, device=device)
-
+        
         batch_size = inputs.shape[0]
-        attrs = []
+        all_masks = []
 
-        # WICHTIG: LIME muss die Bilder einzeln verarbeiten,
-        # da die Superpixel (Segmente) spezifisch pro Bild generiert werden.
         for i in range(batch_size):
-            single_input = inputs[i:i+1]  # Shape: (1, C, H, W)
-            single_target = targets[i:i+1]
+            # Vorbereitung des Bildes: (C, H, W) -> (H, W, C) für LIME/skimage
+            if torch.is_tensor(inputs[i]):
+                # PyTorch Tensor: Vom Gradienten lösen, auf CPU holen, Dimensionen tauschen
+                img_np = inputs[i].detach().cpu().permute(1, 2, 0).numpy().astype('double')
+            else:
+                # NumPy Array: Einfach nur Dimensionen tauschen
+                img_np = inputs[i].transpose(1, 2, 0).astype('double')
+            target = targets[i].item()
 
-            # 1. Bild für die Superpixel-Berechnung vorbereiten
-            # Skimage erwartet das Format (H, W, C) als Numpy-Array
-            img_np = single_input[0].detach().cpu().numpy().transpose(1, 2, 0)
-            
-            # Normalisieren (0 bis 1) für eine saubere Segmentierung
-            img_np = (img_np - img_np.min()) / (img_np.max() - img_np.min() + 1e-8)
+            # Definition der Vorhersage-Funktion für das Black-Box-Modell [cite: 118, 147]
+            def batch_predict(images):
+               imgs_torch = torch.tensor(images.transpose(0, 3, 1, 2), dtype=torch.float32, device=device)
+               with torch.no_grad():
+                    logits = model(imgs_torch)
+                    probs = torch.nn.functional.softmax(logits, dim=1)
+               return probs.cpu().numpy()
 
-            # 2. Superpixel (Segmente) generieren
-            # n_segments bestimmt die Granularität. Sangwan betont, dass Hyperparameter
-            # von Erklärungsalgorithmen die Qualität signifikant beeinflussen.
-            segments = slic(img_np, n_segments=250, compactness=10, start_label=0)
-
-            # Feature-Maske in das von Captum erwartete Tensor-Format bringen: (1, 1, H, W)
-            feature_mask = torch.tensor(segments, device=device).unsqueeze(0).unsqueeze(0)
-
-            # 3. LIME Attribute berechnen
-            # n_samples = Anzahl der Perturbationen (Je höher, desto stabiler, aber deutlich langsamer)
-            attr = explainer.attribute(
-                single_input,
-                target=single_target,
-                feature_mask=feature_mask,
-                n_samples=5000 # (Ribeiro et al., 2016) nutzten für die Bildklassifikation beispielsweise oft 5.000 Samples 
+            # Generierung der Erklärung durch Sampling und lokales Modell
+            explanation = explainer.explain_instance(
+                img_np, 
+                batch_predict, 
+                labels=(target,),
+                top_labels=None, 
+                num_samples=num_samples,
             )
 
-            # Über die Farbkanäle summieren, um eine 2D-Heatmap zu erhalten (analog zu Grad-CAM)
-            attr = attr.sum(dim=1)
-            attrs.append(attr)
+            # Extraktion der Maske für die Zielklasse
+            temp, mask = explanation.get_image_and_mask(
+                target, 
+                positive_only=True, 
+                num_features=num_features,
+                hide_rest=True
+            )
+            
+            all_masks.append(mask)
 
-        # Den Batch wieder zusammensetzen
-        batch_attr = torch.cat(attrs, dim=0)
-        return batch_attr.detach().cpu().numpy()
+        # Rückgabe als NumPy-Array für deine Metriken
+        return np.array(all_masks)
 
     return wrapper
 
-def evaluateLIME(model, x_batch, y_batch):
+def evaluateLIME(model, x_batch, y_batch, nr_samples=20, num_samples=1000, num_features=10000000000):
     print("-" * 30)
     print("Evaluate LIME metric...")
 
     results = {}
+    metrics = getMetrics(nr_samples)
     for key in metrics:
         print(f"  -> Running metric: {key}")
         start = time.time()
@@ -1758,7 +1746,7 @@ def evaluateLIME(model, x_batch, y_batch):
             x_batch=x_batch,
             y_batch=y_batch,
             device=device,
-            explain_func=get_lime_explainer(model),
+            explain_func=get_lime_explainer(model, num_samples, num_features),
         )
         end = time.time()
         results[key] = scores;
@@ -1796,11 +1784,12 @@ def get_gradcam_explainer(model, target_layer):
     return wrapper
 
 
-def evaluateGradCAM(model, x_batch, y_batch, model_target_layer):
+def evaluateGradCAM(model, x_batch, y_batch, model_target_layer, nr_samples=20):
     print("-" * 30)
     print("Evaluate Grad-CAM metric...")
 
     results = {}
+    metrics = getMetrics(nr_samples)
     for key in metrics:
         print(f"  -> Running metric: {key}")
         start = time.time()
@@ -1825,127 +1814,579 @@ In dieser finalen Evaluationsschleife werden Grad-CAM und LIME auf einer gezielt
 
 
 ```python
-def get_eval_data(dataloader, num_samples):
-    """Zieht exakt num_samples Bilder am Stück aus dem Dataloader."""
-    x_list, y_list = [], []
-    collected = 0
-    
-    for inputs, labels in dataloader:
-        x_list.append(inputs)
-        y_list.append(labels)
-        collected += len(inputs)
-        if collected >= num_samples:
-            break
-            
-    # Tensoren zusammenfügen und exakt auf num_samples abschneiden
-    x_tensor = torch.cat(x_list, dim=0)[:num_samples]
-    y_tensor = torch.cat(y_list, dim=0)[:num_samples]
-    
-    return x_tensor.numpy(), y_tensor.numpy()
+mobileNetV3Model = mobileNetV3Model.to(device)
+resNet101Model= resNet101Model.to(device)
 
-def evaluateXai(model, target_layer, title, max_gradcam=32, max_lime=10):
+# 1. Datenbeschaffung
+max_images = 32
+xai_image_loader = get_xai_loader(mobileNetV3Model) # kann auch das andere Model genommen werden. Geht nur darum, dasss immer die gleichen Bilder verwendet werden.
+print(f"Lade {max_images} Bilder aus dem Test-Loader...")
+
+# Zieht den ersten Batch und schneidet ihn direkt auf 32 ab
+inputs, labels = next(iter(xai_image_loader))
+x_images, y_images = inputs[:max_images].numpy(), labels[:max_images].numpy()
+
+experiments = [
+    {"run": 1, "method": "GradCAM", "robustness_samples": 5}, # Wie ändert sich der LocalLipschitzEstimate bei nur 5 Test-Varianten?
+    {"run": 2, "method": "GradCAM", "robustness_samples": 10}, # Basis-Vergleichswert der Robustness und Faithfulness zu LIME.
+    {"run": 3, "method": "GradCAM", "robustness_samples": 20}, # Sinkt die gemessene Instabilität durch die Glättung von mehr Runs?
+    {"run": 4, "method": "LIME", "n_samples": 500, "k_features": 50, "robustness_samples": 10}, # Mittlere Parameter für alle Metriken
+    {"run": 5, "method": "LIME", "n_samples": 100, "k_features": 50, "robustness_samples": 10}, # Wie stark sinkt die Rechenzeit und Faithfulness bei nur 100 Samples?
+    {"run": 6, "method": "LIME", "n_samples": 1000, "k_features": 50, "robustness_samples": 10}, # Steigt die Erklärungstreue bei 1000 Samples spürbar an? (Achtung: lange Dauer 
+    {"run": 7, "method": "LIME", "n_samples": 500, "k_features": 10, "robustness_samples": 10}, #Standard-LIME-Wert für Menschen. Verschlechtern sich dadurch die Maschinen-Scores in Quantus?
+    {"run": 8, "method": "LIME", "n_samples": 500, "k_features": 10000000000, "robustness_samples": 10}, # Zwingt LIME zu einer dichten Map (wie Grad-CAM). Wie verhalten sich Faithfulness/Robustness?
+    {"run": 9, "method": "LIME", "n_samples": 500, "k_features": 50, "robustness_samples": 5}, # Beschleunigt dies die Robustness-Metrik, ohne das Ergebnis zu verfälschen?
+    {"run": 10, "method": "LIME", "n_samples": 500, "k_features": 50, "robustness_samples": 20} #Zeigt die Robustheit bei mehr Messpunkten weniger Schwankungen?
+]
+
+def evaluate(model, targetLayer, title):
     print(f"\n{'='*40}")
-    print(f"Starte Evaluation - {title}")
+    print(f"Starte Evaluation - {title} ({device})")
     print(f"{'='*40}")
     
-    model = model.to(device)
-    
-    # 1. Datenbeschaffung
-    # Bilder aufteilen (LIME testet exakt dieselben ersten Bilder wie Grad-CAM)
-    xai_image_loader = get_xai_loader(model)
-    print(f"Lade {max_gradcam} Bilder aus dem Test-Loader für Grad-CAM...")
-    
-    x_gradcam, y_gradcam = get_eval_data(xai_image_loader, max_gradcam)
+    for config in experiments:
+        run_id = config["run"]
+        method = config["method"]
+       
+        if method == "LIME":
+            print(f"\n{run_id}. Lime: n_samples: {config['n_samples']}, robustness_samples: {config['robustness_samples']}, k_features: {config['k_features']}")    
+            evaluateLIME(model, x_images, y_images, config["robustness_samples"], config["n_samples"], config["k_features"])
+        elif method == "GradCAM":
+            print(f"\n{run_id}. Grad-CAM: robustness_samples: {config['robustness_samples']}") 
+            evaluateGradCAM(model, x_images, y_images, targetLayer, config["robustness_samples"])
 
-    print(f"Lade {max_lime} Bilder aus dem Test-Loader für Lime...")
-    x_lime, y_lime = get_eval_data(xai_image_loader, max_lime)
-    
-    # 2. Grad-CAM Evaluierung (Alles in einem Rutsch)
-    print(f"\n-> Evaluiere Grad-CAM ({len(x_gradcam)} Bilder)...")
-    results_gradcam = evaluateGradCAM(model, x_gradcam, y_gradcam, target_layer)
-        
-    # 3. LIME Evaluierung (Alles in einem Rutsch)
-    print(f"\n-> Evaluiere LIME ({len(x_lime)} Bilder)...")
-    results_lime = evaluateLIME(model, x_lime, y_lime)
-    
-    for key in metrics:
-        plot_xai_comparison(results_gradcam[key], results_lime[key], key)
-    
-    print(f"\nEvaluation für {title} abgeschlossen!")
-
-# Aufruf: GradCam und Lime später mit 60 Bildern. Das ist sehr Zeitintensiv (für Lime > 12 Std. mal 2 für Resnet und MobileNet)
-evaluateXai(resNet101Model, resNet101Model.layer4[-1], "ResNet101", max_gradcam=32, max_lime=32)
-evaluateXai(mobileNetV3Model, mobileNetV3Model.features[-1], "MobileNetV3", max_gradcam=32, max_lime=32)
+evaluate(mobileNetV3Model, mobileNetV3Model.features[-1], "MobileNetV3")
+evaluate(resNet101Model, resNet101Model.layer4[-1], "ResNet-101")
 ```
+
+    Lade 32 Bilder aus dem Test-Loader...
+    
+    ========================================
+    Starte Evaluation - MobileNetV3 (cuda)
+    ========================================
+    
+    1. Grad-CAM: robustness_samples: 5
+    ------------------------------
+    Evaluate Grad-CAM metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 10.80s
+        Statistik: Mean: 65.6664 | Std: 10.7016 | Min: 45.6514 | Max: 97.5067
+        Einzel-Scores: [72.5006, 70.7878, 50.7137, 60.8615, 97.5067, 59.3278, 75.5358, 57.5677, 59.2563, 60.6992, 74.4819, 63.5735, 61.5025, 45.6514, 45.7368, 83.8703, 74.4330, 56.5331, 51.5321, 74.1804, 68.0454, 56.8509, 68.5039, 66.9797, 69.1891, 73.9265, 68.3551, 69.5187, 62.1980, 75.3556, 56.5144, 69.6368]
+    
+      -> Running metric: Robustness
+        Dauer: 3.54s
+        Statistik: Mean: 0.6533 | Std: 0.2280 | Min: 0.3390 | Max: 1.2092
+        Einzel-Scores: [0.4974, 0.6131, 0.6563, 0.4625, 1.2092, 0.6337, 0.8139, 0.6132, 0.3894, 0.8791, 0.3785, 0.4222, 0.5954, 1.0985, 0.5102, 0.6077, 1.0033, 0.9634, 0.5201, 0.4174, 0.7291, 0.8665, 0.4002, 0.3390, 0.7216, 0.4995, 0.5592, 0.9180, 0.4675, 0.7675, 0.4230, 0.9296]
+    
+    
+    2. Grad-CAM: robustness_samples: 10
+    ------------------------------
+    Evaluate Grad-CAM metric...
+      -> Running metric: Faithfulness
+        Dauer: 11.03s
+        Statistik: Mean: 65.6664 | Std: 10.7016 | Min: 45.6514 | Max: 97.5067
+        Einzel-Scores: [72.5006, 70.7878, 50.7137, 60.8615, 97.5067, 59.3278, 75.5358, 57.5677, 59.2563, 60.6992, 74.4819, 63.5735, 61.5025, 45.6514, 45.7368, 83.8703, 74.4330, 56.5331, 51.5321, 74.1804, 68.0454, 56.8509, 68.5039, 66.9797, 69.1891, 73.9265, 68.3551, 69.5187, 62.1980, 75.3556, 56.5144, 69.6368]
+    
+      -> Running metric: Robustness
+        Dauer: 6.92s
+        Statistik: Mean: 0.6441 | Std: 0.2437 | Min: 0.3343 | Max: 1.2174
+        Einzel-Scores: [0.7097, 0.6681, 0.8816, 0.4865, 1.1775, 0.5829, 0.6501, 0.4085, 0.4496, 0.8294, 0.5072, 0.4014, 0.5497, 1.1570, 0.6064, 0.5399, 0.8510, 1.0451, 0.5004, 0.3343, 0.8197, 0.6624, 0.3924, 0.3940, 0.3953, 0.3438, 0.6943, 0.7485, 0.5052, 0.6698, 0.4329, 1.2174]
+    
+    
+    3. Grad-CAM: robustness_samples: 20
+    ------------------------------
+    Evaluate Grad-CAM metric...
+      -> Running metric: Faithfulness
+        Dauer: 10.86s
+        Statistik: Mean: 65.6664 | Std: 10.7016 | Min: 45.6514 | Max: 97.5067
+        Einzel-Scores: [72.5006, 70.7878, 50.7137, 60.8615, 97.5067, 59.3278, 75.5358, 57.5677, 59.2563, 60.6992, 74.4819, 63.5735, 61.5025, 45.6514, 45.7368, 83.8703, 74.4330, 56.5331, 51.5321, 74.1804, 68.0454, 56.8509, 68.5039, 66.9797, 69.1891, 73.9265, 68.3551, 69.5187, 62.1980, 75.3556, 56.5144, 69.6368]
+    
+      -> Running metric: Robustness
+        Dauer: 13.47s
+        Statistik: Mean: 0.6907 | Std: 0.2345 | Min: 0.3270 | Max: 1.3981
+        Einzel-Scores: [0.6044, 0.7597, 0.7601, 0.5410, 1.3981, 0.5961, 0.7625, 0.4234, 0.5948, 0.8808, 0.4908, 0.5128, 0.6060, 1.2027, 0.6135, 0.8487, 0.8597, 0.8787, 0.6040, 0.3270, 0.8750, 0.8694, 0.5891, 0.3311, 0.4262, 0.5532, 0.6832, 0.5803, 0.5618, 0.8112, 0.4944, 1.0616]
+    
+    
+    4. Lime: n_samples: 500, robustness_samples: 10, k_features: 50
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 80.71s
+        Statistik: Mean: 76.5572 | Std: 15.7311 | Min: 20.6079 | Max: 95.0418
+        Einzel-Scores: [88.5003, 88.4945, 77.5003, 57.4547, 95.0418, 85.5054, 79.5432, 78.5062, 91.5001, 82.5265, 81.5076, 20.6079, 80.5028, 34.5925, 80.5012, 85.3994, 80.4488, 70.5000, 80.4672, 87.7723, 80.5640, 84.5000, 71.8674, 84.6490, 81.5263, 74.4985, 84.0372, 85.4794, 54.6581, 79.5296, 55.4725, 86.1748]
+    
+      -> Running metric: Robustness
+        Dauer: 791.91s
+        Statistik: Mean: 3.9425 | Std: 0.5410 | Min: 1.7568 | Max: 5.0852
+        Einzel-Scores: [4.0894, 3.7771, 4.0946, 3.8661, 1.7568, 4.3499, 4.2848, 3.4363, 3.3535, 4.1333, 3.5779, 4.2505, 3.7168, 4.1855, 4.2790, 3.8350, 3.4277, 3.9310, 4.5469, 4.0588, 3.7591, 3.8111, 4.0400, 3.9605, 4.4344, 3.3326, 4.1966, 4.0342, 5.0852, 4.0954, 4.5749, 3.8844]
+    
+    
+    5. Lime: n_samples: 100, robustness_samples: 10, k_features: 50
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 33.33s
+        Statistik: Mean: 73.6842 | Std: 13.1662 | Min: 30.1230 | Max: 94.3097
+        Einzel-Scores: [89.5013, 83.0935, 69.2984, 60.5206, 94.3097, 81.5001, 86.4588, 64.5987, 83.3683, 66.4747, 82.4955, 30.1230, 83.7538, 40.5003, 83.7339, 80.5213, 77.8904, 68.1655, 62.2063, 87.5585, 78.5000, 78.5287, 70.6918, 70.4988, 78.6570, 70.5000, 74.1070, 79.9698, 67.1936, 66.4994, 63.1955, 83.4815]
+    
+      -> Running metric: Robustness
+        Dauer: 265.03s
+        Statistik: Mean: 3.9856 | Std: 0.3816 | Min: 2.9774 | Max: 4.7208
+        Einzel-Scores: [3.9595, 3.9884, 4.2439, 4.1636, 2.9774, 4.5703, 4.0803, 3.7125, 4.0227, 4.3291, 4.0042, 4.4338, 3.6084, 4.0558, 3.5650, 3.9185, 3.8098, 3.9813, 3.7762, 3.9084, 4.4613, 4.0170, 3.6894, 4.2606, 4.2998, 3.5191, 4.7208, 4.1149, 3.8998, 4.4114, 3.0188, 4.0157]
+    
+    
+    6. Lime: n_samples: 1000, robustness_samples: 10, k_features: 50
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 134.22s
+        Statistik: Mean: 76.1271 | Std: 17.8366 | Min: 4.9045 | Max: 95.3498
+        Einzel-Scores: [83.0917, 88.7153, 74.9337, 76.1848, 95.3498, 88.4310, 74.5220, 82.1325, 84.5001, 78.0479, 88.3940, 4.9045, 90.5006, 41.4787, 83.5001, 85.5386, 80.4955, 65.4711, 84.1839, 86.4407, 80.4976, 88.5000, 71.5001, 80.5129, 81.4561, 68.7133, 88.0343, 86.5002, 42.3091, 69.5005, 55.4811, 86.2467]
+    
+      -> Running metric: Robustness
+        Dauer: 1415.25s
+        Statistik: Mean: 3.9288 | Std: 0.5838 | Min: 1.3295 | Max: 4.7615
+        Einzel-Scores: [3.9306, 4.0817, 4.1640, 3.7511, 1.3295, 4.3668, 4.3336, 3.7301, 3.6866, 4.4174, 3.6776, 4.2574, 3.9819, 4.2785, 4.1790, 4.2202, 3.4473, 3.6771, 3.1560, 4.1506, 3.4838, 3.6000, 4.1587, 3.9996, 4.3002, 3.8735, 4.2639, 3.8884, 4.7615, 3.9452, 4.7342, 3.8939]
+    
+    
+    7. Lime: n_samples: 500, robustness_samples: 10, k_features: 10
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 77.61s
+        Statistik: Mean: 76.3887 | Std: 18.5356 | Min: 10.2666 | Max: 98.4235
+        Einzel-Scores: [84.4992, 83.4989, 67.5304, 54.2943, 98.4235, 84.4998, 89.9298, 71.5033, 76.5090, 82.4735, 83.5525, 10.2666, 89.5448, 28.4993, 86.8925, 88.2326, 80.4995, 73.4953, 82.7381, 92.0222, 83.8738, 89.5000, 82.6563, 75.5825, 83.5080, 70.5090, 84.5047, 88.5022, 56.6087, 81.6141, 47.1862, 91.4889]
+    
+      -> Running metric: Robustness
+        Dauer: 771.98s
+        Statistik: Mean: 3.9585 | Std: 0.2934 | Min: 3.4489 | Max: 4.7252
+        Einzel-Scores: [4.0427, 3.9356, 3.7113, 3.4489, 3.8125, 4.0956, 3.8815, 3.9795, 3.6937, 3.6992, 3.9222, 3.5767, 3.8447, 3.6279, 4.0902, 4.7252, 4.3188, 3.9783, 3.7571, 4.2625, 4.0238, 4.4266, 3.6778, 3.8896, 4.0328, 3.7632, 4.3158, 3.8743, 3.6388, 4.1999, 3.8055, 4.6181]
+    
+    
+    8. Lime: n_samples: 500, robustness_samples: 10, k_features: 10000000000
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 77.80s
+        Statistik: Mean: 76.8531 | Std: 14.0159 | Min: 31.1096 | Max: 95.1308
+        Einzel-Scores: [87.5002, 84.5372, 64.7690, 58.0679, 95.1308, 80.5750, 86.1214, 78.5047, 88.5034, 75.5057, 84.5279, 31.1096, 85.5055, 51.4997, 89.5220, 84.4117, 79.5022, 68.5003, 68.4999, 88.6016, 77.3467, 84.5000, 81.4508, 87.5011, 82.5014, 72.5000, 86.5329, 85.5000, 55.4765, 75.5000, 51.1070, 88.4877]
+    
+      -> Running metric: Robustness
+        Dauer: 778.59s
+        Statistik: Mean: 3.8601 | Std: 0.6482 | Min: 0.7631 | Max: 4.5340
+        Einzel-Scores: [3.8833, 3.9626, 4.1395, 4.1078, 0.7631, 4.3696, 3.8582, 3.1134, 3.8382, 4.3969, 4.0040, 4.4830, 3.1913, 3.8460, 4.5340, 4.0321, 3.5743, 3.7008, 3.6591, 3.7864, 3.9661, 3.7336, 3.8996, 4.1442, 4.0586, 3.4201, 4.1124, 3.9444, 4.4541, 4.2782, 4.0508, 4.2164]
+    
+    
+    9. Lime: n_samples: 500, robustness_samples: 5, k_features: 50
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 78.76s
+        Statistik: Mean: 77.2507 | Std: 16.3027 | Min: 13.2330 | Max: 94.8168
+        Einzel-Scores: [87.5000, 85.4982, 80.0015, 53.7200, 94.8168, 79.5003, 88.0382, 75.5464, 86.5000, 83.6507, 74.7465, 13.2330, 84.0474, 41.5017, 81.3283, 89.0227, 83.5003, 74.5001, 81.1977, 88.6712, 83.5269, 86.5000, 80.4549, 84.6338, 85.3604, 73.1940, 90.5154, 84.5019, 52.4957, 77.5000, 61.3315, 85.4857]
+    
+      -> Running metric: Robustness
+        Dauer: 422.29s
+        Statistik: Mean: 3.8292 | Std: 0.5060 | Min: 1.6102 | Max: 4.7062
+        Einzel-Scores: [3.8579, 4.2468, 3.5888, 3.7261, 1.6102, 4.3583, 3.7075, 3.5731, 3.9694, 4.1527, 3.7933, 4.6472, 4.0045, 3.8150, 3.7350, 4.0865, 3.5654, 3.7070, 3.4209, 3.5368, 3.6465, 3.4953, 3.7277, 3.9705, 4.1415, 3.7088, 4.2927, 3.7018, 4.7062, 4.1435, 4.0301, 3.8659]
+    
+    
+    10. Lime: n_samples: 500, robustness_samples: 20, k_features: 50
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 77.85s
+        Statistik: Mean: 76.0182 | Std: 14.7070 | Min: 22.4680 | Max: 94.7567
+        Einzel-Scores: [90.5001, 74.5210, 58.6283, 61.6836, 94.7567, 82.9180, 88.6892, 75.5624, 90.5018, 75.7573, 78.5178, 22.4680, 83.5002, 54.5023, 83.4980, 85.4358, 81.5000, 69.5001, 83.4828, 84.6492, 85.4999, 81.5444, 73.2668, 79.5005, 74.1818, 71.5000, 85.6249, 89.5079, 47.3708, 64.8579, 67.6748, 91.4790]
+    
+      -> Running metric: Robustness
+        Dauer: 1495.27s
+        Statistik: Mean: 3.9831 | Std: 0.4607 | Min: 2.0330 | Max: 4.5919
+        Einzel-Scores: [3.9188, 3.8571, 4.0549, 3.9125, 2.0330, 4.3971, 3.8941, 3.6919, 3.7337, 4.3873, 3.8179, 4.3899, 3.7338, 4.2349, 4.2048, 4.4535, 3.3066, 3.8918, 3.8988, 4.5634, 3.8753, 3.7171, 4.0570, 4.0706, 4.4322, 3.6988, 3.9675, 3.9739, 4.5919, 4.3885, 4.3758, 3.9331]
+    
+    
+    ========================================
+    Starte Evaluation - ResNet-101 (cuda)
+    ========================================
+    
+    1. Grad-CAM: robustness_samples: 5
+    ------------------------------
+    Evaluate Grad-CAM metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 22.30s
+        Statistik: Mean: 82.7101 | Std: 15.2311 | Min: 40.1223 | Max: 98.9729
+        Einzel-Scores: [88.7956, 92.2554, 82.0588, 84.8718, 70.0388, 91.4328, 96.3660, 86.9614, 89.3372, 92.6883, 91.9495, 40.1223, 98.9729, 67.9238, 94.0551, 95.2775, 77.5485, 64.1116, 87.3224, 94.4852, 88.4855, 51.4109, 93.1069, 89.6435, 97.2225, 69.3984, 89.6065, 92.6906, 45.8640, 89.2520, 63.9220, 89.5450]
+    
+      -> Running metric: Robustness
+        Dauer: 3.89s
+        Statistik: Mean: 0.3771 | Std: 0.1225 | Min: 0.2304 | Max: 0.8370
+        Einzel-Scores: [0.5032, 0.2773, 0.3950, 0.5135, 0.8370, 0.3160, 0.2649, 0.2307, 0.2877, 0.2995, 0.4149, 0.3994, 0.4910, 0.5308, 0.3817, 0.3987, 0.2304, 0.2984, 0.4250, 0.2868, 0.3750, 0.5795, 0.2571, 0.4095, 0.3584, 0.3643, 0.4293, 0.3434, 0.2616, 0.2620, 0.2977, 0.3464]
+    
+    
+    2. Grad-CAM: robustness_samples: 10
+    ------------------------------
+    Evaluate Grad-CAM metric...
+      -> Running metric: Faithfulness
+        Dauer: 22.17s
+        Statistik: Mean: 82.7101 | Std: 15.2311 | Min: 40.1223 | Max: 98.9729
+        Einzel-Scores: [88.7956, 92.2554, 82.0588, 84.8718, 70.0388, 91.4328, 96.3660, 86.9614, 89.3372, 92.6883, 91.9495, 40.1223, 98.9729, 67.9238, 94.0551, 95.2775, 77.5485, 64.1116, 87.3224, 94.4852, 88.4855, 51.4109, 93.1069, 89.6435, 97.2225, 69.3984, 89.6065, 92.6906, 45.8640, 89.2520, 63.9220, 89.5450]
+    
+      -> Running metric: Robustness
+        Dauer: 7.38s
+        Statistik: Mean: 0.3999 | Std: 0.1212 | Min: 0.2381 | Max: 0.8447
+        Einzel-Scores: [0.4978, 0.3080, 0.4263, 0.5489, 0.8447, 0.3769, 0.3219, 0.2381, 0.3372, 0.3039, 0.4965, 0.4078, 0.5115, 0.5372, 0.3691, 0.4088, 0.2640, 0.3070, 0.5233, 0.3735, 0.3791, 0.5636, 0.2489, 0.4400, 0.3927, 0.3651, 0.4413, 0.3358, 0.2797, 0.2555, 0.3301, 0.3631]
+    
+    
+    3. Grad-CAM: robustness_samples: 20
+    ------------------------------
+    Evaluate Grad-CAM metric...
+      -> Running metric: Faithfulness
+        Dauer: 22.13s
+        Statistik: Mean: 82.7101 | Std: 15.2311 | Min: 40.1223 | Max: 98.9729
+        Einzel-Scores: [88.7956, 92.2554, 82.0588, 84.8718, 70.0388, 91.4328, 96.3660, 86.9614, 89.3372, 92.6883, 91.9495, 40.1223, 98.9729, 67.9238, 94.0551, 95.2775, 77.5485, 64.1116, 87.3224, 94.4852, 88.4855, 51.4109, 93.1069, 89.6435, 97.2225, 69.3984, 89.6065, 92.6906, 45.8640, 89.2520, 63.9220, 89.5450]
+    
+      -> Running metric: Robustness
+        Dauer: 14.06s
+        Statistik: Mean: 0.4142 | Std: 0.1382 | Min: 0.2412 | Max: 0.9457
+        Einzel-Scores: [0.4823, 0.3559, 0.4191, 0.5749, 0.9457, 0.3180, 0.2926, 0.3097, 0.3713, 0.3537, 0.4609, 0.4493, 0.6111, 0.5873, 0.3368, 0.4632, 0.2525, 0.2945, 0.5248, 0.2998, 0.4093, 0.6006, 0.2412, 0.4288, 0.3669, 0.3969, 0.4565, 0.3393, 0.2999, 0.3044, 0.3370, 0.3699]
+    
+    
+    4. Lime: n_samples: 500, robustness_samples: 10, k_features: 50
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 160.94s
+        Statistik: Mean: 75.3068 | Std: 27.1205 | Min: -31.5080 | Max: 97.1959
+        Einzel-Scores: [95.3843, 93.0254, 72.6334, 74.6706, 41.0587, 88.0995, 97.1959, 79.2875, 94.6148, 91.8867, 93.6708, -31.5080, 93.6780, 65.1845, 91.9265, 95.3450, 81.4816, 42.6585, 78.9212, 93.2822, 85.9363, 83.4860, 82.0321, 89.0417, 93.5983, 33.1304, 83.5632, 93.4796, 29.5484, 48.1101, 66.3444, 89.0515]
+    
+      -> Running metric: Robustness
+        Dauer: 1569.12s
+        Statistik: Mean: 3.5225 | Std: 0.6952 | Min: 2.2746 | Max: 4.6320
+        Einzel-Scores: [3.8418, 2.8845, 3.8538, 4.4504, 4.2564, 2.7260, 3.5545, 2.3642, 4.0133, 3.6287, 2.7081, 3.9644, 4.2840, 4.3270, 2.5422, 3.6065, 3.2170, 3.3542, 2.5685, 3.0853, 2.4752, 4.1419, 3.0047, 2.2746, 3.3271, 4.1186, 4.0903, 3.0678, 4.4462, 3.5988, 4.6320, 4.3107]
+    
+    
+    5. Lime: n_samples: 100, robustness_samples: 10, k_features: 50
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 58.71s
+        Statistik: Mean: 74.0511 | Std: 24.3613 | Min: -3.2479 | Max: 96.7227
+        Einzel-Scores: [95.3723, 89.2279, 82.9169, 59.9973, 53.1975, 89.3028, 96.7227, 82.9318, 85.2034, 89.5655, 93.3675, -3.2479, 95.5185, 48.7085, 93.2308, 89.6972, 56.3495, 52.5234, 82.3631, 88.9904, 84.4941, 67.0635, 86.6078, 87.8135, 93.6576, 44.5753, 79.4888, 88.9404, 9.0709, 49.7977, 63.6233, 92.5636]
+    
+      -> Running metric: Robustness
+        Dauer: 416.77s
+        Statistik: Mean: 3.5846 | Std: 0.6363 | Min: 2.2844 | Max: 4.5537
+        Einzel-Scores: [4.1475, 3.1908, 3.5237, 4.5076, 4.5537, 3.1609, 3.8403, 3.3102, 4.1429, 3.1731, 3.1214, 4.1571, 3.7106, 4.2892, 3.0083, 3.2019, 2.8247, 3.9656, 2.7825, 2.2844, 3.2077, 4.0752, 3.2349, 2.4392, 2.6179, 4.2896, 4.0161, 3.3186, 4.3296, 3.5446, 4.4361, 4.2998]
+    
+    
+    6. Lime: n_samples: 1000, robustness_samples: 10, k_features: 50
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 291.17s
+        Statistik: Mean: 79.3455 | Std: 15.6934 | Min: 35.7338 | Max: 97.2454
+        Einzel-Scores: [77.8755, 90.4531, 73.7901, 72.6711, 44.0357, 88.1461, 95.1130, 89.2255, 91.8796, 89.3120, 88.7714, 64.4772, 97.2454, 64.7287, 89.0918, 91.0911, 78.4463, 43.5242, 88.3558, 91.4425, 82.5364, 79.9369, 86.7829, 91.2603, 93.5774, 65.7750, 81.5071, 90.2387, 35.7338, 60.9265, 70.4823, 90.6216]
+    
+      -> Running metric: Robustness
+        Dauer: 3016.96s
+        Statistik: Mean: 3.4530 | Std: 0.7146 | Min: 1.8031 | Max: 4.6150
+        Einzel-Scores: [3.7366, 3.0796, 3.6822, 4.6150, 4.5194, 3.2344, 3.6938, 1.8031, 3.6639, 3.5846, 3.0936, 3.9885, 3.8221, 4.1589, 2.5740, 3.6044, 3.1021, 2.9575, 2.8810, 1.8781, 2.3159, 3.6166, 2.8382, 2.8115, 3.3890, 3.6449, 3.8299, 3.2319, 4.5492, 3.6593, 4.3677, 4.5697]
+    
+    
+    7. Lime: n_samples: 500, robustness_samples: 10, k_features: 10
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 163.35s
+        Statistik: Mean: 70.2118 | Std: 56.6095 | Min: -227.1284 | Max: 97.4591
+        Einzel-Scores: [92.3959, 92.2073, 86.5059, 79.2106, 61.5698, 90.2073, 97.2211, 86.8457, 90.9347, 90.0152, 95.3660, -227.1284, 97.4591, 83.8451, 45.8124, 90.5406, 70.1498, 56.2441, 88.7804, 92.9176, 88.5313, 84.1380, 83.9714, 91.4832, 94.5300, 58.5537, 86.3890, 93.8903, 26.2550, 31.0661, 54.9831, 91.8871]
+    
+      -> Running metric: Robustness
+        Dauer: 1579.51s
+        Statistik: Mean: 3.8360 | Std: 0.2753 | Min: 3.1593 | Max: 4.2920
+        Einzel-Scores: [3.8787, 4.0040, 3.9994, 4.2920, 3.8287, 3.6873, 3.8506, 3.8076, 3.2016, 3.8444, 3.7336, 3.6270, 3.9061, 3.9460, 3.9797, 3.7703, 3.9316, 3.9965, 3.7576, 4.2071, 3.7091, 4.1309, 3.8885, 4.1283, 3.8584, 3.1593, 3.3025, 4.2675, 3.7572, 3.9993, 3.9968, 3.3056]
+    
+    
+    8. Lime: n_samples: 500, robustness_samples: 10, k_features: 10000000000
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 162.39s
+        Statistik: Mean: 69.9385 | Std: 55.6305 | Min: -223.7589 | Max: 97.6152
+        Einzel-Scores: [93.5326, 94.1756, 73.4013, 75.9820, 46.1091, 88.2163, 97.6152, 80.5066, 91.0840, 88.6232, 87.5820, -223.7589, 92.6977, 69.1710, 92.0066, 95.5704, 83.5711, 52.9979, 86.8752, 93.0153, 81.7288, 76.8155, 85.9664, 90.4853, 92.7943, 60.0665, 84.2727, 74.1923, 10.9006, 71.6434, 59.4583, 90.7348]
+    
+      -> Running metric: Robustness
+        Dauer: 1633.37s
+        Statistik: Mean: 3.4288 | Std: 0.8568 | Min: 1.8767 | Max: 4.6679
+        Einzel-Scores: [3.9123, 2.6367, 3.9929, 4.6454, 4.5261, 3.4545, 3.6472, 1.8767, 3.9802, 2.0741, 1.9528, 4.2491, 4.6679, 4.4289, 2.9486, 3.6694, 2.6720, 3.1744, 2.6388, 2.5674, 2.0338, 3.5564, 2.8780, 2.2709, 2.9393, 3.8081, 3.9678, 3.7381, 4.6461, 3.6535, 4.4455, 4.0688]
+    
+    
+    9. Lime: n_samples: 500, robustness_samples: 5, k_features: 50
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 163.85s
+        Statistik: Mean: 75.3432 | Std: 27.8576 | Min: -50.1018 | Max: 96.6573
+        Einzel-Scores: [93.4918, 92.9703, 85.4526, 77.5019, 38.0084, 88.2249, 96.6573, 79.4185, 90.5441, 91.0760, 93.4812, -50.1018, 95.2079, 73.1486, 91.3189, 92.2060, 54.2949, 42.1386, 90.0040, 92.7311, 83.6092, 76.6800, 84.0474, 87.7584, 93.7230, 53.5682, 79.5063, 79.1466, 46.2712, 62.1920, 65.5109, 91.1943]
+    
+      -> Running metric: Robustness
+        Dauer: 859.70s
+        Statistik: Mean: 3.3169 | Std: 0.7768 | Min: 1.8533 | Max: 4.6532
+        Einzel-Scores: [3.7220, 2.5130, 2.5391, 4.2856, 4.2981, 3.1933, 3.8536, 2.4874, 3.8306, 2.7635, 2.6472, 4.0008, 4.0295, 4.4229, 2.6085, 3.4290, 3.0042, 3.0347, 2.1638, 2.4216, 1.8533, 3.7665, 3.0598, 2.1865, 2.2333, 3.7133, 3.8005, 3.4131, 4.6532, 3.7079, 4.3260, 4.1789]
+    
+    
+    10. Lime: n_samples: 500, robustness_samples: 20, k_features: 50
+    ------------------------------
+    Evaluate LIME metric...
+      -> Running metric: Faithfulness
+    
+
+    F:\Anaconda\envs\ml_env\Lib\site-packages\quantus\helpers\warn.py:257: UserWarning: The settings for perturbing input e.g., 'perturb_func' didn't cause change in input. Reconsider the parameter settings.
+      warnings.warn(
+    
+
+        Dauer: 162.26s
+        Statistik: Mean: 78.0532 | Std: 23.8388 | Min: -14.5817 | Max: 97.4685
+        Einzel-Scores: [92.0724, 88.6335, 83.3387, 76.5113, 38.9572, 94.6407, 97.2857, 89.7071, 93.8291, 91.0501, 89.9733, -14.5817, 97.4685, 74.6515, 91.8608, 89.5530, 85.9391, 59.8077, 89.0947, 95.4726, 84.8689, 62.0313, 83.5728, 88.9964, 93.2704, 63.8233, 81.1994, 84.4501, 18.7921, 66.5021, 71.4741, 93.4561]
+    
+      -> Running metric: Robustness
+        Dauer: 2996.99s
+        Statistik: Mean: 3.5857 | Std: 0.6765 | Min: 2.3783 | Max: 4.7597
+        Einzel-Scores: [4.0449, 3.0378, 3.8882, 4.7597, 4.4938, 3.4097, 3.7676, 2.7349, 3.9701, 2.8454, 2.7295, 4.2734, 3.7182, 4.4148, 2.8113, 3.5280, 2.7666, 3.0433, 3.0237, 2.5728, 2.3783, 4.2246, 3.1462, 2.8581, 3.3898, 3.9672, 4.1220, 3.4869, 4.5567, 3.9418, 4.4872, 4.3491]
+    
+    
 
 ### Zeiten messen für Grad-CAM und LIME
 
 
 ```python
-def measure_xai_performance(model, img, target, target_layer, iterations=10):
-    # Vorbereitung der Explainer
-    gradcam_func = get_gradcam_explainer(model, target_layer)
-    # Falls du einen LIME-Explainer hast, hier definieren:
-    lime_explainer = get_lime_explainer(model)
-    
-    gradcam_times = []
-    lime_times = []
+experiments = [
+    {"run": 1, "method": "GradCAM"},
+    {"run": 2, "method": "LIME", "n_samples": 500, "k_features": 50},
+    {"run": 3, "method": "LIME", "n_samples": 100, "k_features": 50}, 
+    {"run": 4, "method": "LIME", "n_samples": 1000, "k_features": 50}, 
+    {"run": 5, "method": "LIME", "n_samples": 500, "k_features": 10}, 
+    {"run": 6, "method": "LIME", "n_samples": 500, "k_features": 10000000000},
+]
 
-    print(f"Starte Benchmark ({iterations} Durchläufe)...")
+def measure_xai_performance(model, image_batch, label_batch, target_layer, title, num_images=32):    
+    print(f"Starte Benchmark für {title} ({num_images} Bilder)...")
+    for config in experiments:
+        run_id = config["run"]
+        method = config["method"]
 
-    for i in range(iterations):
-        # --- Messung Grad-CAM ---
-        start = time.perf_counter()
-        _ = gradcam_func(model, img, target)
-        end = time.perf_counter()
-        gradcam_times.append(end - start)
+        if method == "LIME":
+            lime_times = []
+            print(f"\n{run_id}. Lime: n_samples: {config['n_samples']}, k_features: {config['k_features']}")    
+            # --- Messung LIME (Beispielhafter Aufruf) ---
+            lime_explainer = get_lime_explainer(model, config['n_samples'], config['k_features'])
+            for i in range(num_images):
+                img = image_batch[i: i+1]
+                target = label_batch[i: i+1]
+                
+                start = time.perf_counter()
+                _ = lime_explainer(model, img, target)
+                end = time.perf_counter()
+                lime_times.append(end - start)
+            
+            lime_mean = np.mean(lime_times)
+            lime_std = np.std(lime_times)
+            print(f"Mittelwert: {lime_mean:.4f} Sekunden")
+            print(f"Standardabweichung: {lime_std:.4f} Sekunden")
+            print(f"{'='*40}")
+        elif method == "GradCAM":
+            print(f"\n{run_id}. Grad-CAM")
+            gradcam_times = []
+            gradcam_func = get_gradcam_explainer(model, target_layer)  
+            for i in range(num_images):
+                img = image_batch[i: i+1]
+                target = label_batch[i: i+1]
+                
+                start = time.perf_counter()
+                _ = gradcam_func(model, img, target)
+                end = time.perf_counter()
+                gradcam_times.append(end - start)
+                
+            # Statistiken berechnen
+            gc_mean = np.mean(gradcam_times)
+            gc_std = np.std(gradcam_times)
+            
+            print(f"\nErgebnisse für Grad-CAM:")
+            print(f"Mittelwert: {gc_mean:.4f} Sekunden")
+            print(f"Standardabweichung: {gc_std:.4f} Sekunden\n")
         
-        # --- Messung LIME (Beispielhafter Aufruf) ---
-        start = time.perf_counter()
-        _ = lime_explainer(model, img, target)
-        end = time.perf_counter()
-        lime_times.append(end - start)
-        
-        print(f"Durchlauf {i+1}/{iterations} abgeschlossen.", end="\r")
+            print(f"{'='*40}")
 
-    # Statistiken berechnen
-    gc_mean = np.mean(gradcam_times)
-    gc_std = np.std(gradcam_times)
-    
-    print(f"\n\nErgebnisse für Grad-CAM:")
-    print(f"Mittelwert: {gc_mean:.4f} Sekunden")
-    print(f"Standardabweichung: {gc_std:.4f} Sekunden\n")
+resNet101Model.to(device)
+mobileNetV3Model.to(device)
 
-    print(f"{'='*40}")
+max_images = 32
+xai_image_loader = get_xai_loader(mobileNetV3Model) # kann auch das andere Model genommen werden. Geht nur darum, dasss immer die gleichen Bilder verwendet werden.
+inputs, labels = next(iter(xai_image_loader))
+images, labels = inputs[:max_images].numpy(), labels[:max_images].numpy()
 
-    lime_mean = np.mean(lime_times)
-    lime_std = np.std(lime_times)
-    print(f"\nErgebnisse für LIME:")
-    print(f"Mittelwert: {lime_mean:.4f} Sekunden")
-    print(f"Standardabweichung: {lime_std:.4f} Sekunden")
-
-img_idx=1
-xai_mobilenet_image_loader = get_xai_loader(mobileNetV3Model)
-data_iter = iter(xai_mobilenet_image_loader)
-images, labels = next(data_iter)
-input_img = images[img_idx: img_idx+1].to(device)
-target = labels[img_idx: img_idx+1].to(device)
-
-measure_xai_performance(mobileNetV3Model, input_img, target, mobileNetV3Model.features[-1])
+measure_xai_performance(mobileNetV3Model, images, labels, mobileNetV3Model.features[-1], 'MobileNetV3')
+measure_xai_performance(resNet101Model, images, labels, resNet101Model.layer4[-1], 'ResNet-101')
 ```
 
-    Starte Benchmark (10 Durchläufe)...
-    Durchlauf 10/10 abgeschlossen.
+    Starte Benchmark für MobileNetV3 (32 Bilder)...
+    
+    1. Grad-CAM
     
     Ergebnisse für Grad-CAM:
-    Mittelwert: 0.0113 Sekunden
-    Standardabweichung: 0.0014 Sekunden
+    Mittelwert: 0.0120 Sekunden
+    Standardabweichung: 0.0023 Sekunden
+    
     ========================================
     
+    2. Lime: n_samples: 500, k_features: 50
+    Mittelwert: 2.1983 Sekunden
+    Standardabweichung: 0.0685 Sekunden
+    ========================================
     
-    Ergebnisse für LIME:
-    Mittelwert: 37.8305 Sekunden
-    Standardabweichung: 0.9381 Sekunden
+    3. Lime: n_samples: 100, k_features: 50
+    Mittelwert: 0.7415 Sekunden
+    Standardabweichung: 0.0191 Sekunden
+    ========================================
+    
+    4. Lime: n_samples: 1000, k_features: 50
+    Mittelwert: 4.0325 Sekunden
+    Standardabweichung: 0.1132 Sekunden
+    ========================================
+    
+    5. Lime: n_samples: 500, k_features: 10
+    Mittelwert: 2.1993 Sekunden
+    Standardabweichung: 0.0548 Sekunden
+    ========================================
+    
+    6. Lime: n_samples: 500, k_features: 10000000000
+    Mittelwert: 2.1969 Sekunden
+    Standardabweichung: 0.0506 Sekunden
+    ========================================
+    Starte Benchmark für ResNet-101 (32 Bilder)...
+    
+    1. Grad-CAM
+    
+    Ergebnisse für Grad-CAM:
+    Mittelwert: 0.0157 Sekunden
+    Standardabweichung: 0.0042 Sekunden
+    
+    ========================================
+    
+    2. Lime: n_samples: 500, k_features: 50
+    Mittelwert: 4.4311 Sekunden
+    Standardabweichung: 0.0328 Sekunden
+    ========================================
+    
+    3. Lime: n_samples: 100, k_features: 50
+    Mittelwert: 1.1626 Sekunden
+    Standardabweichung: 0.0176 Sekunden
+    ========================================
+    
+    4. Lime: n_samples: 1000, k_features: 50
+    Mittelwert: 8.5943 Sekunden
+    Standardabweichung: 0.1435 Sekunden
+    ========================================
+    
+    5. Lime: n_samples: 500, k_features: 10
+    Mittelwert: 4.4407 Sekunden
+    Standardabweichung: 0.0422 Sekunden
+    ========================================
+    
+    6. Lime: n_samples: 500, k_features: 10000000000
+    Mittelwert: 4.4382 Sekunden
+    Standardabweichung: 0.0340 Sekunden
+    ========================================
     
 
 ## 8. Visualisierungen
@@ -1976,8 +2417,8 @@ def visualize_explanations(model, images, labels, target_layer, title, img_idx=0
     
     # --- LIME ---
     lime_func = get_lime_explainer(model)
-    attr_lime = lime_func(model, input_img, target)[0] 
-    attr_lime = np.expand_dims(attr_lime, axis=-1)
+    attr_lime_raw = lime_func(model, input_img, target)[0] # Erstes Bild aus Batch
+    attr_lime = np.expand_dims(attr_lime_raw, axis=-1).astype(float)
     
     # 3. Visualisierung
     fig, axs = plt.subplots(1, 3, figsize=(15, 5))
@@ -2008,26 +2449,34 @@ def visualize_explanations(model, images, labels, target_layer, title, img_idx=0
 resNet101Model.to(device)
 mobileNetV3Model.to(device)
 
-# Bilder nur aus dem MobileNetV3Loader nehmen, sodass für Resnet101 und MobileNetBV3 die gleichen Bilder verwendet werden.
+# Bilder nur aus dem MobileNetV3Loader nehmen, sodass für Resnet101 und MobileNetV3 die gleichen Bilder verwendet werden.
 xai_mobilenet_image_loader = get_xai_loader(mobileNetV3Model)
 data_iter = iter(xai_mobilenet_image_loader)
 images, labels = next(data_iter)
 
-visualize_explanations(resNet101Model, images, labels, resNet101Model.layer4[-1], "ResNet-101", 3)
-visualize_explanations(mobileNetV3Model, images, labels, mobileNetV3Model.features[-1],"MobileNetV3", 3)
+visualize_explanations(resNet101Model, images, labels, resNet101Model.layer4[-1], "ResNet-101", 10)
+visualize_explanations(mobileNetV3Model, images, labels, mobileNetV3Model.features[-1],"MobileNetV3", 10)
 
 
 ```
 
 
-    
-![png](output_55_0.png)
-    
+      0%|          | 0/1000 [00:00<?, ?it/s]
 
 
 
     
-![png](output_55_1.png)
+![png](output_54_1.png)
+    
+
+
+
+      0%|          | 0/1000 [00:00<?, ?it/s]
+
+
+
+    
+![png](output_54_3.png)
     
 
 
@@ -2107,7 +2556,7 @@ plt.show()
 
 
     
-![png](output_57_0.png)
+![png](output_56_0.png)
     
 
 
@@ -2121,23 +2570,23 @@ def plot_gradcam_instability(model, images, labels, target_layer, img_idx=0, noi
     Erstellt ein Vorher-Nachher-Bild, das die Instabilität von Grad-CAM bei Rauschen zeigt.
     noise_std: Standardabweichung des Rauschens (je höher, desto stärker die Störung).
     """
-    # 1. Daten vorbereiten (1 Bild auswählen)
+    # Daten vorbereiten (1 Bild auswählen)
     input_img = images[img_idx: img_idx+1].to(device)
     target = labels[img_idx: img_idx+1].to(device)
     
-    # 2. Minimales, kaum wahrnehmbares Rauschen hinzufügen (Gaussian Noise)
+    # Minimales, kaum wahrnehmbares Rauschen hinzufügen (Gaussian Noise)
     # Entspricht methodisch Alvarez-Melis & Jaakkola (2018)
     noise = torch.randn_like(input_img) * noise_std
     noisy_img = input_img + noise
     
-    # 3. Bilder für Matplotlib skalieren (Min-Max Normalisierung für den Plot)
+    # Bilder für Matplotlib skalieren (Min-Max Normalisierung für den Plot)
     img_orig_plot = input_img.detach().cpu().squeeze(0).permute(1, 2, 0).numpy()
     img_orig_plot = (img_orig_plot - img_orig_plot.min()) / (img_orig_plot.max() - img_orig_plot.min() + 1e-8)
     
     img_noisy_plot = noisy_img.detach().cpu().squeeze(0).permute(1, 2, 0).numpy()
     img_noisy_plot = (img_noisy_plot - img_noisy_plot.min()) / (img_noisy_plot.max() - img_noisy_plot.min() + 1e-8)
     
-    # 4. Erklärungen (Heatmaps) generieren
+    # Erklärungen (Heatmaps) generieren
     model.eval()
     gradcam_func = get_gradcam_explainer(model, target_layer)
     
@@ -2157,7 +2606,7 @@ def plot_gradcam_instability(model, images, labels, target_layer, img_idx=0, noi
         attr_noisy = np.squeeze(attr_noisy, axis=0)
         attr_noisy = np.transpose(attr_noisy, (1, 2, 0))
     
-    # 5. Visualisierung im gewünschten 3-Spalten-Layout
+    # 5. Visualisierung
     fig, axs = plt.subplots(1, 3, figsize=(18, 6))
     fig.suptitle("Instabilität von Grad-CAM gegenüber minimalem Rauschen", fontsize=18, fontweight='bold', y=1.05)
     
@@ -2192,7 +2641,7 @@ plot_gradcam_instability(resNet101Model, images, labels, resNet101Model.layer4[-
 
 
     
-![png](output_59_0.png)
+![png](output_58_0.png)
     
 
 
@@ -2201,12 +2650,12 @@ plot_gradcam_instability(resNet101Model, images, labels, resNet101Model.layer4[-
 
 ```python
 # --- ResNet-101 Daten ---
-faith_grad_resnet = [92.4613, 43.8197, 74.9168, 51.3528, 91.1718, 75.9846, 29.1998, 90.0316, 80.5131, 73.2153, 75.5331, 85.0464, 78.9854, 46.7030, 92.5023, 71.8888, 75.1960, 58.1193, 60.7161, 83.9134, 58.4366, 76.0540, 78.2140, 78.7453, 90.3374, 71.8125, 23.2766, 88.2497, 10.4084, 84.2271, 89.2264, 93.6262]
-faith_lime_resnet = [96.4620, 43.2492, 70.1298, 90.6888, 88.0375, 78.5296, 22.0342, 86.1290, 83.2196, 80.4134, 82.0970, 92.1431, 81.1343, 22.7135, 94.8421, 84.5738, 80.1461, 73.3751, 73.2712, 90.7904, 86.4116, 66.7947, 72.6379, 89.6523, 90.0999, 85.7788, 36.8838, 87.6935, 42.4586, 85.8750, 88.9620, 93.5030]
+faith_grad_resnet = [88.7956, 92.2554, 82.0588, 84.8718, 70.0388, 91.4328, 96.3660, 86.9614, 89.3372, 92.6883, 91.9495, 40.1223, 98.9729, 67.9238, 94.0551, 95.2775, 77.5485, 64.1116, 87.3224, 94.4852, 88.4855, 51.4109, 93.1069, 89.6435, 97.2225, 69.3984, 89.6065, 92.6906, 45.8640, 89.2520, 63.9220, 89.5450]
+faith_lime_resnet = [95.3843, 93.0254, 72.6334, 74.6706, 41.0587, 88.0995, 97.1959, 79.2875, 94.6148, 91.8867, 93.6708, -31.5080, 93.6780, 65.1845, 91.9265, 95.3450, 81.4816, 42.6585, 78.9212, 93.2822, 85.9363, 83.4860, 82.0321, 89.0417, 93.5983, 33.1304, 83.5632, 93.4796, 29.5484, 48.1101, 66.3444, 89.0515]
 
 # --- MobileNetV3 Daten ---
-faith_grad_mobile = [88.8333, 57.7797, 51.1560, 41.3344, 40.1525, 52.9381, 63.2086, 53.2984, 53.7326, 48.1268, 58.0388, 50.0508, 88.5189, 44.2849, 46.2662, 57.3253, 58.3802, 39.6705, 88.1187, 50.7047, 60.5030, 48.9873, 51.5827, 86.6216, 36.3420, 37.6179, 40.7641, 56.3676, 51.3279, 55.9757, -3.5310, 86.2395]
-faith_lime_mobile = [75.1875, 46.5803, 57.7411, 48.5129, 37.7317, 41.7190, 78.6034, 55.5205, 59.9980, 34.9575, 43.0082, 44.7075, 42.4723, 38.8432, 35.1916, 62.0721, 52.4421, 47.0232, 69.0977, 37.9720, 71.5314, 48.1011, 43.3314, 82.9373, 46.8019, 31.6470, 65.6159, 38.5697, 50.0091, 46.3562, 7.4643, 86.0820]
+faith_grad_mobile = [72.5006, 70.7878, 50.7137, 60.8615, 97.5067, 59.3278, 75.5358, 57.5677, 59.2563, 60.6992, 74.4819, 63.5735, 61.5025, 45.6514, 45.7368, 83.8703, 74.4330, 56.5331, 51.5321, 74.1804, 68.0454, 56.8509, 68.5039, 66.9797, 69.1891, 73.9265, 68.3551, 69.5187, 62.1980, 75.3556, 56.5144, 69.6368]
+faith_lime_mobile = [88.5003, 88.4945, 77.5003, 57.4547, 95.0418, 85.5054, 79.5432, 78.5062, 91.5001, 82.5265, 81.5076, 20.6079, 80.5028, 34.5925, 80.5012, 85.3994, 80.4488, 70.5000, 80.4672, 87.7723, 80.5640, 84.5000, 71.8674, 84.6490, 81.5263, 74.4985, 84.0372, 85.4794, 54.6581, 79.5296, 55.4725, 86.1748]
 
 # ==========================================
 # 2. DATAFRAME ERSTELLEN FÜR SEABORN
@@ -2250,7 +2699,7 @@ plt.show()
 
 
     
-![png](output_61_0.png)
+![png](output_60_0.png)
     
 
 
@@ -2259,12 +2708,12 @@ plt.show()
 
 ```python
 # --- ResNet-101 Daten ---
-rob_grad_resnet = [0.3938, 0.3807, 1.0087, 0.4216, 0.3379, 0.9721, 0.4353, 0.4098, 0.2915, 0.4038, 0.4298, 0.2980, 0.4962, 0.6703, 0.4088, 0.4281, 0.5416, 0.3765, 0.4685, 0.3285, 0.4868, 0.4161, 0.3679, 0.3404, 0.3265, 0.6157, 0.6097, 0.7509, 0.8328, 0.3424, 0.4068, 0.5046]
-rob_lime_resnet = [0.5796, 0.2121, 0.3770, 0.1754, 0.1700, 0.6993, 0.2831, 0.1809, 0.3383, 0.2182, 0.2903, 0.3154, 0.1808, 0.2665, 0.3781, 0.2197, 0.1987, 0.2306, 0.2757, 0.1972, 0.2692, 0.1893, 0.1748, 0.1827, 0.2242, 0.2350, 0.5864, 0.5737, 0.5936, 0.2097, 0.1773, 0.5990]
+rob_grad_resnet = [0.4978, 0.3080, 0.4263, 0.5489, 0.8447, 0.3769, 0.3219, 0.2381, 0.3372, 0.3039, 0.4965, 0.4078, 0.5115, 0.5372, 0.3691, 0.4088, 0.2640, 0.3070, 0.5233, 0.3735, 0.3791, 0.5636, 0.2489, 0.4400, 0.3927, 0.3651, 0.4413, 0.3358, 0.2797, 0.2555, 0.3301, 0.3631]
+rob_lime_resnet = [3.8418, 2.8845, 3.8538, 4.4504, 4.2564, 2.7260, 3.5545, 2.3642, 4.0133, 3.6287, 2.7081, 3.9644, 4.2840, 4.3270, 2.5422, 3.6065, 3.2170, 3.3542, 2.5685, 3.0853, 2.4752, 4.1419, 3.0047, 2.2746, 3.3271, 4.1186, 4.0903, 3.0678, 4.4462, 3.5988, 4.6320, 4.3107]
 
 # --- MobileNetV3 Daten ---
-rob_grad_mobile = [0.8903, 0.8433, 0.6700, 0.9808, 0.6653, 1.0210, 1.2674, 0.6240, 1.3576, 0.5991, 1.0480, 0.7141, 0.5874, 0.5390, 0.6449, 0.6734, 0.7630, 0.6867, 0.8297, 0.7854, 1.4032, 0.6685, 0.9022, 1.6025, 0.8016, 0.4461, 0.8231, 0.5450, 0.6705, 0.7096, 0.5578, 1.9018]
-rob_lime_mobile = [1.3891, 0.7398, 1.3414, 0.9119, 1.0601, 0.8069, 0.8961, 1.5162, 0.9040, 0.6081, 0.8062, 0.7590, 1.2249, 0.5351, 1.0121, 1.2427, 0.6190, 0.5852, 1.3218, 0.6100, 0.9927, 1.0700, 0.5186, 1.8363, 0.8020, 1.6199, 1.0374, 2.2068, 0.5837, 0.8772, 1.0502, 1.2806]
+rob_grad_mobile = [0.7097, 0.6681, 0.8816, 0.4865, 1.1775, 0.5829, 0.6501, 0.4085, 0.4496, 0.8294, 0.5072, 0.4014, 0.5497, 1.1570, 0.6064, 0.5399, 0.8510, 1.0451, 0.5004, 0.3343, 0.8197, 0.6624, 0.3924, 0.3940, 0.3953, 0.3438, 0.6943, 0.7485, 0.5052, 0.6698, 0.4329, 1.2174]
+rob_lime_mobile = [4.0894, 3.7771, 4.0946, 3.8661, 1.7568, 4.3499, 4.2848, 3.4363, 3.3535, 4.1333, 3.5779, 4.2505, 3.7168, 4.1855, 4.2790, 3.8350, 3.4277, 3.9310, 4.5469, 4.0588, 3.7591, 3.8111, 4.0400, 3.9605, 4.4344, 3.3326, 4.1966, 4.0342, 5.0852, 4.0954, 4.5749, 3.8844]
 
 # ==========================================
 # 2. DATAFRAME ERSTELLEN FÜR SEABORN
@@ -2308,7 +2757,113 @@ plt.show()
 
 
     
-![png](output_63_0.png)
+![png](output_62_0.png)
+    
+
+
+### Visualisierung von Fehlklassifikationen
+
+
+```python
+def show_sanity_check_grid(model, test_loader, target_layer, class_names, max_images=4):
+    """
+    Sucht im Testdatensatz nach Fehlklassifikationen und generiert die Heatmaps 
+    exakt über deine eigene 'get_gradcam_explainer'-Funktion.
+    """
+    model.eval() 
+    
+    # 1. DEINE eigene Initialisierung (kein LayerAttribution mehr!)
+    gradcam_func = get_gradcam_explainer(model, target_layer)
+    
+    # Grid-Layout initialisieren (max_images Zeilen, 2 Spalten)
+    # fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+    fig, axes = plt.subplots(nrows=max_images, ncols=2, figsize=(5, 3 * max_images))
+    
+    found_images = 0
+    
+    for inputs, labels in test_loader:
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+        
+        # Vorhersage des Modells
+        outputs = model(inputs)
+        _, preds = torch.max(outputs, 1)
+        
+        for i in range(inputs.size(0)):
+            true_label = labels[i].item()
+            pred_label = preds[i].item()
+            
+            # Bedingung: Finde Fehlklassifikationen!
+            if true_label != pred_label:
+                
+                # --- A. ORIGINALBILD VORBEREITEN ---
+                img_tensor = inputs[i].cpu().clone().detach()
+                
+                # ImageNet-Normalisierung rückgängig machen für korrekte Farben
+                mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+                std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+                img_unnorm = img_tensor * std + mean
+                img_np = img_unnorm.permute(1, 2, 0).numpy()
+                img_np = np.clip(img_np, 0, 1)
+                
+                # --- B. EXAKT DEIN AUFRUF ZUR HEATMAP-BERECHNUNG ---
+                input_img = inputs[i].unsqueeze(0).to(device)
+                
+                # Wichtig für Sanity Checks: Wir wollen wissen, warum das Modell den Fehler gemacht hat,
+                # daher nutzen wir hier die FALSCHE Vorhersage (pred_label) als target!
+                target = pred_label 
+                
+                # Deine Funktion
+                attr_orig = gradcam_func(model, input_img, target)
+                
+                # Sicherstellen, dass das Format für Matplotlib passt
+                if torch.is_tensor(attr_orig):
+                    heatmap = attr_orig.squeeze().cpu().detach().numpy()
+                else:
+                    heatmap = np.squeeze(attr_orig)
+                    
+                # (Optional) Werte bereinigen, falls deine Funktion das noch nicht intern tut
+                heatmap = np.maximum(heatmap, 0) # Nur positive Einflüsse
+                if np.max(heatmap) > 0:
+                    heatmap /= np.max(heatmap) # Normalisieren auf 0 bis 1
+                
+                # --- C. PLOTTEN IM GRID ---
+                
+                # Linke Spalte: Nur das Originalbild
+                ax_orig = axes[found_images, 0]
+                ax_orig.imshow(img_np)
+                ax_orig.set_title(f"Wahr: {class_names[true_label]}. Vorhersage: {class_names[pred_label]}")
+                ax_orig.axis('off')
+                
+                # Textbeschriftung an den Rand setzen
+                #label_text = f"Wahr: {class_names[true_label]}\nVorhersage: {class_names[pred_label]}"
+                #ax_orig.set_ylabel(label_text, fontsize=12, labelpad=15, rotation=0, 
+                                  # ha='right', va='center', fontweight='bold')
+                
+                # Rechte Spalte: OVERLAY (Original + Heatmap)
+                ax_heat = axes[found_images, 1]
+                ax_heat.imshow(img_np) # Basisbild
+                
+                # Alpha=0.5 mischt die Heatmap transparent über dein Bild (genau wie bei Rausch-Kapitel)
+                ax_heat.imshow(heatmap, cmap='jet', alpha=0.5) 
+                ax_heat.set_xticks([])
+                ax_heat.set_yticks([])
+                
+                found_images += 1
+                
+                # Abbrechen, sobald das Grid voll ist
+                if found_images >= max_images:
+                    plt.tight_layout()
+                    plt.show()
+                    return
+
+classes = ['akiec', 'bcc', 'bkl', 'df', 'mel', 'nv', 'vasc']
+show_sanity_check_grid(mobileNetV3Model, test_loader, mobileNetV3Model.features[-1], classes, max_images=7)
+```
+
+
+    
+![png](output_64_0.png)
     
 
 
