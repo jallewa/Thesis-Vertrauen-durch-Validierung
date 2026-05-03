@@ -17,7 +17,7 @@ Die experimentelle Pipeline in diesem Notebook durchläuft folgende Schritte:
    * **LIME** (Perturbations-basiert)
 4. **Quantitative Evaluation:** Nutzung des **Quantus-Frameworks** zur standardisierten Black-Box-Evaluierung:
    * **Erklärungstreue (Faithfulness):** Gemessen mit der **IROF**-Metrik (Iterative Removal of Features), um das Pixel-Korrelations-Problem hochauflösender medizinischer Bilder zu lösen.
-   * **Robustheit (Robustness):** Gemessen über **Local Lipschitz Estimate** / **Relative Output Stability**, um die Stabilität der Erklärungen bei minimalen, künstlichen Bildstörungen (Rauschen) zu quantifizieren.
+   * **Robustheit (Robustness):** Gemessen über **Local Lipschitz Estimate**, um die Stabilität der Erklärungen bei minimalen, künstlichen Bildstörungen (Rauschen) zu quantifizieren.
 
 ## Referenzen
 Dieses Projekt baut auf folgenden wissenschaftlichen Arbeiten und Tools auf:
