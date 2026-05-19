@@ -2683,7 +2683,7 @@ plt.figure(figsize=(10, 6))
 
 # 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
 sns.violinplot(x='XAI-Methode', y='IROF Score', hue='Modell', data=df, 
-               split=True, inner='box', palette=['#005EA6', '#EFB251'])
+               split=True, inner='box', palette=['#005EA6', '#D7005F'])
 
 plt.title('Erklärungstreue (IROF) im Modellvergleich', fontsize=14, fontweight='bold', pad=15)
 plt.ylabel('IROF Score (AOC)', fontsize=12)
@@ -2741,7 +2741,7 @@ plt.figure(figsize=(10, 6))
 
 # 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
 sns.violinplot(x='XAI-Methode', y='Local Lipschitz Estimate', hue='Modell', data=df, 
-               split=True, inner='box', palette=['#005EA6', '#EFB251'])
+               split=True, inner='box', palette=['#005EA6', '#D7005F'])
 
 plt.title('Robustheit (Local Lipschitz Estimate) im Modellvergleich', fontsize=14, fontweight='bold', pad=15)
 plt.ylabel('Local Lipschitz Estimate', fontsize=12)
