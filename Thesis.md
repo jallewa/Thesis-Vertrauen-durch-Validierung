@@ -2867,6 +2867,374 @@ show_sanity_check_grid(mobileNetV3Model, test_loader, mobileNetV3Model.features[
     
 
 
+### Visualisierung - Sensitivität gegenüber der Parametrisierung (LIME)
+
+#### Erklärungstreue - Samples N
+
+
+```python
+# --- ResNet-101 Daten ---
+n_100_res = [95.3723, 89.2279, 82.9169, 59.9973, 53.1975, 89.3028, 96.7227, 82.9318, 85.2034, 89.5655, 93.3675, -3.2479, 95.5185, 48.7085, 93.2308, 89.6972, 56.3495, 52.5234, 82.3631, 88.9904, 84.4941, 67.0635, 86.6078, 87.8135, 93.6576, 44.5753, 79.4888, 88.9404, 9.0709, 49.7977, 63.6233, 92.5636]
+n_500_res = [95.3843, 93.0254, 72.6334, 74.6706, 41.0587, 88.0995, 97.1959, 79.2875, 94.6148, 91.8867, 93.6708, -31.5080, 93.6780, 65.1845, 91.9265, 95.3450, 81.4816, 42.6585, 78.9212, 93.2822, 85.9363, 83.4860, 82.0321, 89.0417, 93.5983, 33.1304, 83.5632, 93.4796, 29.5484, 48.1101, 66.3444, 89.0515]
+n_1000_res = [77.8755, 90.4531, 73.7901, 72.6711, 44.0357, 88.1461, 95.1130, 89.2255, 91.8796, 89.3120, 88.7714, 64.4772, 97.2454, 64.7287, 89.0918, 91.0911, 78.4463, 43.5242, 88.3558, 91.4425, 82.5364, 79.9369, 86.7829, 91.2603, 93.5774, 65.7750, 81.5071, 90.2387, 35.7338, 60.9265, 70.4823, 90.6216]
+# --- MobileNetV3 Daten ---
+n_100_mobile = [89.5013, 83.0935, 69.2984, 60.5206, 94.3097, 81.5001, 86.4588, 64.5987, 83.3683, 66.4747, 82.4955, 30.1230, 83.7538, 40.5003, 83.7339, 80.5213, 77.8904, 68.1655, 62.2063, 87.5585, 78.5000, 78.5287, 70.6918, 70.4988, 78.6570, 70.5000, 74.1070, 79.9698, 67.1936, 66.4994, 63.1955, 83.4815]
+n_500_mobile = [88.5003, 88.4945, 77.5003, 57.4547, 95.0418, 85.5054, 79.5432, 78.5062, 91.5001, 82.5265, 81.5076, 20.6079, 80.5028, 34.5925, 80.5012, 85.3994, 80.4488, 70.5000, 80.4672, 87.7723, 80.5640, 84.5000, 71.8674, 84.6490, 81.5263, 74.4985, 84.0372, 85.4794, 54.6581, 79.5296, 55.4725, 86.1748]
+n_1000_mobile = [83.0917, 88.7153, 74.9337, 76.1848, 95.3498, 88.4310, 74.5220, 82.1325, 84.5001, 78.0479, 88.3940, 4.9045, 90.5006, 41.4787, 83.5001, 85.5386, 80.4955, 65.4711, 84.1839, 86.4407, 80.4976, 88.5000, 71.5001, 80.5129, 81.4561, 68.7133, 88.0343, 86.5002, 42.3091, 69.5005, 55.4811, 86.2467]
+# ==========================================
+# 2. DATAFRAME ERSTELLEN FÜR SEABORN
+# ==========================================
+data = []
+
+# ResNet-Daten anhängen
+for val in n_100_res:
+    data.append({'Samples': 'N=100', 'Modell': 'ResNet-101', 'IROF Score': val})
+for val in n_500_res:
+    data.append({'Samples': 'N=500', 'Modell': 'ResNet-101', 'IROF Score': val})
+for val in n_1000_res:
+    data.append({'Samples': 'N=1000', 'Modell': 'ResNet-101', 'IROF Score': val})
+# MobileNet-Daten anhängen
+for val in n_100_mobile:
+    data.append({'Samples': 'N=100', 'Modell': 'MobileNetV3', 'IROF Score': val})
+for val in n_500_mobile:
+    data.append({'Samples': 'N=500', 'Modell': 'MobileNetV3', 'IROF Score': val})
+for val in n_1000_mobile:
+    data.append({'Samples': 'N=1000', 'Modell': 'MobileNetV3', 'IROF Score': val})
+
+df = pd.DataFrame(data)
+
+# ==========================================
+# 3. GRUPPIERTEN PLOT ERSTELLEN
+# ==========================================
+plt.figure(figsize=(10, 6))
+
+# 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
+sns.violinplot(x='Samples', y='IROF Score', hue='Modell', data=df, 
+               split=True, inner='box', palette=['#005EA6', '#D7005F'])
+
+plt.title('Erklärungstreue - Sensitivität gegenüber der Parametrisierung (LIME) - Samples', fontsize=14, fontweight='bold', pad=15)
+plt.ylabel('IROF Score (AOC)', fontsize=12)
+plt.xlabel('Samples', fontsize=12)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+# Legende anpassen
+plt.legend(title='Architektur', loc='lower center')
+plt.tight_layout()
+
+plt.show()
+```
+
+
+    
+![png](output_67_0.png)
+    
+
+
+#### Erklärungstreue - Superpixel K
+
+
+```python
+# --- ResNet-101 Daten ---
+k_10_res = [92.3959, 92.2073, 86.5059, 79.2106, 61.5698, 90.2073, 97.2211, 86.8457, 90.9347, 90.0152, 95.3660, -227.1284, 97.4591, 83.8451, 45.8124, 90.5406, 70.1498, 56.2441, 88.7804, 92.9176, 88.5313, 84.1380, 83.9714, 91.4832, 94.5300, 58.5537, 86.3890, 93.8903, 26.2550, 31.0661, 54.9831, 91.8871]
+k_50_res = [95.3843, 93.0254, 72.6334, 74.6706, 41.0587, 88.0995, 97.1959, 79.2875, 94.6148, 91.8867, 93.6708, -31.5080, 93.6780, 65.1845, 91.9265, 95.3450, 81.4816, 42.6585, 78.9212, 93.2822, 85.9363, 83.4860, 82.0321, 89.0417, 93.5983, 33.1304, 83.5632, 93.4796, 29.5484, 48.1101, 66.3444, 89.0515]
+k_max_res = [77.8755, 90.4531, 73.7901, 72.6711, 44.0357, 88.1461, 95.1130, 89.2255, 91.8796, 89.3120, 88.7714, 64.4772, 97.2454, 64.7287, 89.0918, 91.0911, 78.4463, 43.5242, 88.3558, 91.4425, 82.5364, 79.9369, 86.7829, 91.2603, 93.5774, 65.7750, 81.5071, 90.2387, 35.7338, 60.9265, 70.4823, 90.6216]
+# --- MobileNetV3 Daten ---
+k_10_mobile = [84.4992, 83.4989, 67.5304, 54.2943, 98.4235, 84.4998, 89.9298, 71.5033, 76.5090, 82.4735, 83.5525, 10.2666, 89.5448, 28.4993, 86.8925, 88.2326, 80.4995, 73.4953, 82.7381, 92.0222, 83.8738, 89.5000, 82.6563, 75.5825, 83.5080, 70.5090, 84.5047, 88.5022, 56.6087, 81.6141, 47.1862, 91.4889]
+k_50_mobile = [88.5003, 88.4945, 77.5003, 57.4547, 95.0418, 85.5054, 79.5432, 78.5062, 91.5001, 82.5265, 81.5076, 20.6079, 80.5028, 34.5925, 80.5012, 85.3994, 80.4488, 70.5000, 80.4672, 87.7723, 80.5640, 84.5000, 71.8674, 84.6490, 81.5263, 74.4985, 84.0372, 85.4794, 54.6581, 79.5296, 55.4725, 86.1748]
+k_max_mobile = [93.5326, 94.1756, 73.4013, 75.9820, 46.1091, 88.2163, 97.6152, 80.5066, 91.0840, 88.6232, 87.5820, -223.7589, 92.6977, 69.1710, 92.0066, 95.5704, 83.5711, 52.9979, 86.8752, 93.0153, 81.7288, 76.8155, 85.9664, 90.4853, 92.7943, 60.0665, 84.2727, 74.1923, 10.9006, 71.6434, 59.4583, 90.7348]
+# ==========================================
+# 2. DATAFRAME ERSTELLEN FÜR SEABORN
+# ==========================================
+data = []
+
+# ResNet-Daten anhängen
+for val in k_10_res:
+    data.append({'Superpixel': 'K=10', 'Modell': 'ResNet-101', 'IROF Score': val})
+for val in k_50_res:
+    data.append({'Superpixel': 'K=50', 'Modell': 'ResNet-101', 'IROF Score': val})
+for val in k_max_res:
+    data.append({'Superpixel': 'K=Max', 'Modell': 'ResNet-101', 'IROF Score': val})
+# MobileNet-Daten anhängen
+for val in k_10_mobile:
+    data.append({'Superpixel': 'K=10', 'Modell': 'MobileNetV3', 'IROF Score': val})
+for val in k_50_mobile:
+    data.append({'Superpixel': 'K=50', 'Modell': 'MobileNetV3', 'IROF Score': val})
+for val in k_max_mobile:
+    data.append({'Superpixel': 'K=Max', 'Modell': 'MobileNetV3', 'IROF Score': val})
+
+df = pd.DataFrame(data)
+
+# ==========================================
+# 3. GRUPPIERTEN PLOT ERSTELLEN
+# ==========================================
+plt.figure(figsize=(10, 6))
+
+# 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
+sns.violinplot(x='Superpixel', y='IROF Score', hue='Modell', data=df, 
+               split=True, inner='box', palette=['#005EA6', '#D7005F'])
+
+plt.title('Erklärungstreue - Sensitivität gegenüber der Parametrisierung (LIME) - Superpixel', fontsize=14, fontweight='bold', pad=15)
+plt.ylabel('IROF Score (AOC)', fontsize=12)
+plt.xlabel('Superpixel', fontsize=12)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+# Legende anpassen
+plt.legend(title='Architektur', loc='lower center')
+plt.tight_layout()
+
+plt.show()
+```
+
+
+    
+![png](output_69_0.png)
+    
+
+
+#### Robustheit - Samples N
+
+
+```python
+# --- ResNet-101 Daten ---
+n_100_res = [4.1475, 3.1908, 3.5237, 4.5076, 4.5537, 3.1609, 3.8403, 3.3102, 4.1429, 3.1731, 3.1214, 4.1571, 3.7106, 4.2892, 3.0083, 3.2019, 2.8247, 3.9656, 2.7825, 2.2844, 3.2077, 4.0752, 3.2349, 2.4392, 2.6179, 4.2896, 4.0161, 3.3186, 4.3296, 3.5446, 4.4361, 4.2998]
+n_500_res = [3.8418, 2.8845, 3.8538, 4.4504, 4.2564, 2.7260, 3.5545, 2.3642, 4.0133, 3.6287, 2.7081, 3.9644, 4.2840, 4.3270, 2.5422, 3.6065, 3.2170, 3.3542, 2.5685, 3.0853, 2.4752, 4.1419, 3.0047, 2.2746, 3.3271, 4.1186, 4.0903, 3.0678, 4.4462, 3.5988, 4.6320, 4.3107]
+n_1000_res = [3.7366, 3.0796, 3.6822, 4.6150, 4.5194, 3.2344, 3.6938, 1.8031, 3.6639, 3.5846, 3.0936, 3.9885, 3.8221, 4.1589, 2.5740, 3.6044, 3.1021, 2.9575, 2.8810, 1.8781, 2.3159, 3.6166, 2.8382, 2.8115, 3.3890, 3.6449, 3.8299, 3.2319, 4.5492, 3.6593, 4.3677, 4.5697]
+# --- MobileNetV3 Daten ---
+n_100_mobile = [3.9595, 3.9884, 4.2439, 4.1636, 2.9774, 4.5703, 4.0803, 3.7125, 4.0227, 4.3291, 4.0042, 4.4338, 3.6084, 4.0558, 3.5650, 3.9185, 3.8098, 3.9813, 3.7762, 3.9084, 4.4613, 4.0170, 3.6894, 4.2606, 4.2998, 3.5191, 4.7208, 4.1149, 3.8998, 4.4114, 3.0188, 4.0157]
+n_500_mobile = [4.0894, 3.7771, 4.0946, 3.8661, 1.7568, 4.3499, 4.2848, 3.4363, 3.3535, 4.1333, 3.5779, 4.2505, 3.7168, 4.1855, 4.2790, 3.8350, 3.4277, 3.9310, 4.5469, 4.0588, 3.7591, 3.8111, 4.0400, 3.9605, 4.4344, 3.3326, 4.1966, 4.0342, 5.0852, 4.0954, 4.5749, 3.8844]
+n_1000_mobile = [3.9306, 4.0817, 4.1640, 3.7511, 1.3295, 4.3668, 4.3336, 3.7301, 3.6866, 4.4174, 3.6776, 4.2574, 3.9819, 4.2785, 4.1790, 4.2202, 3.4473, 3.6771, 3.1560, 4.1506, 3.4838, 3.6000, 4.1587, 3.9996, 4.3002, 3.8735, 4.2639, 3.8884, 4.7615, 3.9452, 4.7342, 3.8939]
+# ==========================================
+# 2. DATAFRAME ERSTELLEN FÜR SEABORN
+# ==========================================
+data = []
+
+# ResNet-Daten anhängen
+for val in n_100_res:
+    data.append({'Samples': 'N=100', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+for val in n_500_res:
+    data.append({'Samples': 'N=500', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+for val in n_1000_res:
+    data.append({'Samples': 'N=1000', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+# MobileNet-Daten anhängen
+for val in n_100_mobile:
+    data.append({'Samples': 'N=100', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+for val in n_500_mobile:
+    data.append({'Samples': 'N=500', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+for val in n_1000_mobile:
+    data.append({'Samples': 'N=1000', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+
+df = pd.DataFrame(data)
+
+# ==========================================
+# 3. GRUPPIERTEN PLOT ERSTELLEN
+# ==========================================
+plt.figure(figsize=(10, 6))
+
+# 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
+sns.violinplot(x='Samples', y='Local Lipschitz Estimate', hue='Modell', data=df, 
+               split=True, inner='box', palette=['#005EA6', '#D7005F'])
+
+plt.title('Robustheit - Sensitivität gegenüber der Parametrisierung (LIME) - Samples', fontsize=14, fontweight='bold', pad=15)
+plt.ylabel('Local Lipschitz Estimate', fontsize=12)
+plt.xlabel('Samples', fontsize=12)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+# Legende anpassen
+plt.legend(title='Architektur', loc='lower center')
+plt.tight_layout()
+
+plt.show()
+```
+
+
+    
+![png](output_71_0.png)
+    
+
+
+#### Robustheit - Superpixel K
+
+
+```python
+# --- ResNet-101 Daten ---
+k_10_res = [3.8787, 4.0040, 3.9994, 4.2920, 3.8287, 3.6873, 3.8506, 3.8076, 3.2016, 3.8444, 3.7336, 3.6270, 3.9061, 3.9460, 3.9797, 3.7703, 3.9316, 3.9965, 3.7576, 4.2071, 3.7091, 4.1309, 3.8885, 4.1283, 3.8584, 3.1593, 3.3025, 4.2675, 3.7572, 3.9993, 3.9968, 3.3056]
+k_50_res = [3.8418, 2.8845, 3.8538, 4.4504, 4.2564, 2.7260, 3.5545, 2.3642, 4.0133, 3.6287, 2.7081, 3.9644, 4.2840, 4.3270, 2.5422, 3.6065, 3.2170, 3.3542, 2.5685, 3.0853, 2.4752, 4.1419, 3.0047, 2.2746, 3.3271, 4.1186, 4.0903, 3.0678, 4.4462, 3.5988, 4.6320, 4.3107]
+k_max_res = [3.9123, 2.6367, 3.9929, 4.6454, 4.5261, 3.4545, 3.6472, 1.8767, 3.9802, 2.0741, 1.9528, 4.2491, 4.6679, 4.4289, 2.9486, 3.6694, 2.6720, 3.1744, 2.6388, 2.5674, 2.0338, 3.5564, 2.8780, 2.2709, 2.9393, 3.8081, 3.9678, 3.7381, 4.6461, 3.6535, 4.4455, 4.0688]
+# --- MobileNetV3 Daten ---
+k_10_mobile = [4.0427, 3.9356, 3.7113, 3.4489, 3.8125, 4.0956, 3.8815, 3.9795, 3.6937, 3.6992, 3.9222, 3.5767, 3.8447, 3.6279, 4.0902, 4.7252, 4.3188, 3.9783, 3.7571, 4.2625, 4.0238, 4.4266, 3.6778, 3.8896, 4.0328, 3.7632, 4.3158, 3.8743, 3.6388, 4.1999, 3.8055, 4.6181]
+k_50_mobile = [4.0894, 3.7771, 4.0946, 3.8661, 1.7568, 4.3499, 4.2848, 3.4363, 3.3535, 4.1333, 3.5779, 4.2505, 3.7168, 4.1855, 4.2790, 3.8350, 3.4277, 3.9310, 4.5469, 4.0588, 3.7591, 3.8111, 4.0400, 3.9605, 4.4344, 3.3326, 4.1966, 4.0342, 5.0852, 4.0954, 4.5749, 3.8844]
+k_max_mobile = [3.8833, 3.9626, 4.1395, 4.1078, 0.7631, 4.3696, 3.8582, 3.1134, 3.8382, 4.3969, 4.0040, 4.4830, 3.1913, 3.8460, 4.5340, 4.0321, 3.5743, 3.7008, 3.6591, 3.7864, 3.9661, 3.7336, 3.8996, 4.1442, 4.0586, 3.4201, 4.1124, 3.9444, 4.4541, 4.2782, 4.0508, 4.2164]
+# ==========================================
+# 2. DATAFRAME ERSTELLEN FÜR SEABORN
+# ==========================================
+data = []
+
+# ResNet-Daten anhängen
+for val in k_10_res:
+    data.append({'Superpixel': 'K=10', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+for val in k_50_res:
+    data.append({'Superpixel': 'K=50', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+for val in k_max_res:
+    data.append({'Superpixel': 'K=Max', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+# MobileNet-Daten anhängen
+for val in k_10_mobile:
+    data.append({'Superpixel': 'K=10', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+for val in k_50_mobile:
+    data.append({'Superpixel': 'K=50', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+for val in k_max_mobile:
+    data.append({'Superpixel': 'K=Max', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+
+df = pd.DataFrame(data)
+
+# ==========================================
+# 3. GRUPPIERTEN PLOT ERSTELLEN
+# ==========================================
+plt.figure(figsize=(10, 6))
+
+# 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
+sns.violinplot(x='Superpixel', y='Local Lipschitz Estimate', hue='Modell', data=df, 
+               split=True, inner='box', palette=['#005EA6', '#D7005F'])
+
+plt.title('Robustheit - Sensitivität gegenüber der Parametrisierung (LIME) - Superpixel', fontsize=14, fontweight='bold', pad=15)
+plt.ylabel('Local Lipschitz Estimate', fontsize=12)
+plt.xlabel('Superpixel', fontsize=12)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+# Legende anpassen
+plt.legend(title='Architektur', loc='lower center')
+plt.tight_layout()
+
+plt.show()
+```
+
+
+    
+![png](output_73_0.png)
+    
+
+
+#### Robustheit - Evaluierungs-Samples (Run 1,2,3) - GradCam
+
+
+```python
+# --- ResNet-101 Daten ---
+grad_5_res = [0.5032, 0.2773, 0.3950, 0.5135, 0.8370, 0.3160, 0.2649, 0.2307, 0.2877, 0.2995, 0.4149, 0.3994, 0.4910, 0.5308, 0.3817, 0.3987, 0.2304, 0.2984, 0.4250, 0.2868, 0.3750, 0.5795, 0.2571, 0.4095, 0.3584, 0.3643, 0.4293, 0.3434, 0.2616, 0.2620, 0.2977, 0.3464]
+grad_10_res = [0.4978, 0.3080, 0.4263, 0.5489, 0.8447, 0.3769, 0.3219, 0.2381, 0.3372, 0.3039, 0.4965, 0.4078, 0.5115, 0.5372, 0.3691, 0.4088, 0.2640, 0.3070, 0.5233, 0.3735, 0.3791, 0.5636, 0.2489, 0.4400, 0.3927, 0.3651, 0.4413, 0.3358, 0.2797, 0.2555, 0.3301, 0.3631]
+grad_20_res = [0.4823, 0.3559, 0.4191, 0.5749, 0.9457, 0.3180, 0.2926, 0.3097, 0.3713, 0.3537, 0.4609, 0.4493, 0.6111, 0.5873, 0.3368, 0.4632, 0.2525, 0.2945, 0.5248, 0.2998, 0.4093, 0.6006, 0.2412, 0.4288, 0.3669, 0.3969, 0.4565, 0.3393, 0.2999, 0.3044, 0.3370, 0.3699]
+# --- MobileNetV3 Daten ---
+grad_5_mobile = [0.4974, 0.6131, 0.6563, 0.4625, 1.2092, 0.6337, 0.8139, 0.6132, 0.3894, 0.8791, 0.3785, 0.4222, 0.5954, 1.0985, 0.5102, 0.6077, 1.0033, 0.9634, 0.5201, 0.4174, 0.7291, 0.8665, 0.4002, 0.3390, 0.7216, 0.4995, 0.5592, 0.9180, 0.4675, 0.7675, 0.4230, 0.9296]
+grad_10_mobile = [0.7097, 0.6681, 0.8816, 0.4865, 1.1775, 0.5829, 0.6501, 0.4085, 0.4496, 0.8294, 0.5072, 0.4014, 0.5497, 1.1570, 0.6064, 0.5399, 0.8510, 1.0451, 0.5004, 0.3343, 0.8197, 0.6624, 0.3924, 0.3940, 0.3953, 0.3438, 0.6943, 0.7485, 0.5052, 0.6698, 0.4329, 1.2174]
+grad_20_mobile = [0.6044, 0.7597, 0.7601, 0.5410, 1.3981, 0.5961, 0.7625, 0.4234, 0.5948, 0.8808, 0.4908, 0.5128, 0.6060, 1.2027, 0.6135, 0.8487, 0.8597, 0.8787, 0.6040, 0.3270, 0.8750, 0.8694, 0.5891, 0.3311, 0.4262, 0.5532, 0.6832, 0.5803, 0.5618, 0.8112, 0.4944, 1.0616]
+# ==========================================
+# 2. DATAFRAME ERSTELLEN FÜR SEABORN
+# ==========================================
+data = []
+
+# ResNet-Daten anhängen
+for val in grad_5_res:
+    data.append({'Samples': '5', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+for val in grad_10_res:
+    data.append({'Samples': '10', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+for val in grad_20_res:
+    data.append({'Samples': '20', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+# MobileNet-Daten anhängen
+for val in grad_5_mobile:
+    data.append({'Samples': '5', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+for val in grad_10_mobile:
+    data.append({'Samples': '10', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+for val in grad_20_mobile:
+    data.append({'Samples': '20', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+
+df = pd.DataFrame(data)
+
+# ==========================================
+# 3. GRUPPIERTEN PLOT ERSTELLEN
+# ==========================================
+plt.figure(figsize=(10, 6))
+
+# 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
+sns.violinplot(x='Samples', y='Local Lipschitz Estimate', hue='Modell', data=df, 
+               split=True, inner='box', palette=['#005EA6', '#D7005F'])
+
+plt.title('Robustheit - Sensitivität gegenüber der Parametrisierung (GradCAM) - EvaluierungsSample', fontsize=14, fontweight='bold', pad=15)
+plt.ylabel('Local Lipschitz Estimate', fontsize=12)
+plt.xlabel('Evaluierungs-Samples', fontsize=12)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+# Legende anpassen
+plt.legend(title='Architektur', loc='lower center')
+plt.tight_layout()
+
+plt.show()
+```
+
+
+    
+![png](output_75_0.png)
+    
+
+
+#### Robustheit - Evaluierungs-Samples (Run 4,9,10) - LIME
+
+
+```python
+# --- ResNet-101 Daten ---
+lime_5_res = [3.7220, 2.5130, 2.5391, 4.2856, 4.2981, 3.1933, 3.8536, 2.4874, 3.8306, 2.7635, 2.6472, 4.0008, 4.0295, 4.4229, 2.6085, 3.4290, 3.0042, 3.0347, 2.1638, 2.4216, 1.8533, 3.7665, 3.0598, 2.1865, 2.2333, 3.7133, 3.8005, 3.4131, 4.6532, 3.7079, 4.3260, 4.1789]
+lime_10_res = [3.8418, 2.8845, 3.8538, 4.4504, 4.2564, 2.7260, 3.5545, 2.3642, 4.0133, 3.6287, 2.7081, 3.9644, 4.2840, 4.3270, 2.5422, 3.6065, 3.2170, 3.3542, 2.5685, 3.0853, 2.4752, 4.1419, 3.0047, 2.2746, 3.3271, 4.1186, 4.0903, 3.0678, 4.4462, 3.5988, 4.6320, 4.3107]
+lime_20_res = [4.0449, 3.0378, 3.8882, 4.7597, 4.4938, 3.4097, 3.7676, 2.7349, 3.9701, 2.8454, 2.7295, 4.2734, 3.7182, 4.4148, 2.8113, 3.5280, 2.7666, 3.0433, 3.0237, 2.5728, 2.3783, 4.2246, 3.1462, 2.8581, 3.3898, 3.9672, 4.1220, 3.4869, 4.5567, 3.9418, 4.4872, 4.3491]
+# --- MobileNetV3 Daten ---
+lime_5_mobile = [3.8579, 4.2468, 3.5888, 3.7261, 1.6102, 4.3583, 3.7075, 3.5731, 3.9694, 4.1527, 3.7933, 4.6472, 4.0045, 3.8150, 3.7350, 4.0865, 3.5654, 3.7070, 3.4209, 3.5368, 3.6465, 3.4953, 3.7277, 3.9705, 4.1415, 3.7088, 4.2927, 3.7018, 4.7062, 4.1435, 4.0301, 3.8659]
+lime_10_mobile = [4.0894, 3.7771, 4.0946, 3.8661, 1.7568, 4.3499, 4.2848, 3.4363, 3.3535, 4.1333, 3.5779, 4.2505, 3.7168, 4.1855, 4.2790, 3.8350, 3.4277, 3.9310, 4.5469, 4.0588, 3.7591, 3.8111, 4.0400, 3.9605, 4.4344, 3.3326, 4.1966, 4.0342, 5.0852, 4.0954, 4.5749, 3.8844]
+lime_20_mobile = [3.9188, 3.8571, 4.0549, 3.9125, 2.0330, 4.3971, 3.8941, 3.6919, 3.7337, 4.3873, 3.8179, 4.3899, 3.7338, 4.2349, 4.2048, 4.4535, 3.3066, 3.8918, 3.8988, 4.5634, 3.8753, 3.7171, 4.0570, 4.0706, 4.4322, 3.6988, 3.9675, 3.9739, 4.5919, 4.3885, 4.3758, 3.9331]
+# ==========================================
+# 2. DATAFRAME ERSTELLEN FÜR SEABORN
+# ==========================================
+data = []
+
+# ResNet-Daten anhängen
+for val in lime_5_res:
+    data.append({'Samples': '5', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+for val in lime_10_res:
+    data.append({'Samples': '10', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+for val in lime_20_res:
+    data.append({'Samples': '20', 'Modell': 'ResNet-101', 'Local Lipschitz Estimate': val})
+# MobileNet-Daten anhängen
+for val in lime_5_mobile:
+    data.append({'Samples': '5', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+for val in lime_10_mobile:
+    data.append({'Samples': '10', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+for val in lime_20_mobile:
+    data.append({'Samples': '20', 'Modell': 'MobileNetV3', 'Local Lipschitz Estimate': val})
+
+df = pd.DataFrame(data)
+
+# ==========================================
+# 3. GRUPPIERTEN PLOT ERSTELLEN
+# ==========================================
+plt.figure(figsize=(10, 6))
+
+# 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
+sns.violinplot(x='Samples', y='Local Lipschitz Estimate', hue='Modell', data=df, 
+               split=True, inner='box', palette=['#005EA6', '#D7005F'])
+
+plt.title('Robustheit - Sensitivität gegenüber der Parametrisierung (LIME) - EvaluierungsSample', fontsize=14, fontweight='bold', pad=15)
+plt.ylabel('Local Lipschitz Estimate', fontsize=12)
+plt.xlabel('Evaluierungs-Samples', fontsize=12)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+# Legende anpassen
+plt.legend(title='Architektur', loc='lower center')
+plt.tight_layout()
+
+plt.show()
+```
+
+
+    
+![png](output_77_0.png)
+    
+
+
 
 ```python
 
