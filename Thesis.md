@@ -419,7 +419,7 @@ test_dataset = HAM10000Dataset(
     transform=validation_data_image_transformer  # Nur Resize/Normalize
 )
 
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True) # nur 32 Batchsize... sind das nicht zu wenig... wie funktioniert das?
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True) 
 val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
@@ -450,7 +450,7 @@ resNet101Model.fc = nn.Sequential(
 ```
 
 ### MobileNetV3 erstellen
-Im direkten Kontrast dazu steht das MobileNetV3. Diese Architekturfamilie wurde speziell für den Einsatz auf ressourcenbeschränkten, mobilen Geräten entwickelt (z. B. für Smartphone-Dermatoskope am Patientenbett). Es nutzt effiziente tiefenweise separierbare Faltungen (Depthwise Separable Convolutions) und Attention-Module (Squeeze-and-Excitation), um mit einem Bruchteil der Parameter auszukommen. (Viel zu kompliziert!!!)
+Im direkten Kontrast dazu steht das MobileNetV3. Diese Architekturfamilie wurde speziell für den Einsatz auf ressourcenbeschränkten, mobilen Geräten entwickelt (z. B. für Smartphone-Dermatoskope am Patientenbett).
 
 
 ```python
@@ -478,8 +478,6 @@ mobileNetV3Model.classifier[last_layer_index] = nn.Linear(in_features, 7)
 ## 4. Modelle trainieren
 In diesem Schritt erfolgt das eigentliche Fine-Tuning der beiden Modelle. Die obersten Klassifikationsschichten der vortrainierten Netzwerke wurden auf die 7 Läsionsklassen des HAM10000-Datensatzes angepasst. Optimiert wird mit dem Adam-Optimizer und der Categorical Cross-Entropy als Verlustfunktion.
 
-(Hinweis: Der Code-Block für das Training ist standardmäßig auskommentiert, da das Training auf einer Standard-Hardware mehrere Stunden in Anspruch nehmen kann. Die trainierten Gewichte werden stattdessen im nächsten Schritt geladen)
-
 
 ```python
 def fit(model, train_loader, val_loader, title, num_epochs=100, learning_rate=0.00001, early_stop_patience=10):
@@ -490,14 +488,9 @@ def fit(model, train_loader, val_loader, title, num_epochs=100, learning_rate=0.
     # Definition der Loss-Funktion: "Categorical Cross Entropy"
     criterion = nn.CrossEntropyLoss()
 
-    # WICHTIG: Wir übergeben dem Optimierer NUR die Parameter, die aufgetaut sind!
     trainable_params = filter(lambda p: p.requires_grad, model.parameters())
     
     # Definition des Optimizers: "Adam"
-    # Wir optimieren nur die Parameter, die requires_grad=True haben (unser neuer Classifier Head).
-    # „Für das Training des Klassifikators wurde der Adam-Optimizer gewählt. Im Gegensatz zum klassischen Stochastic Gradient Descent (SGD)
-    # nutzt Adam adaptive Lernraten, was in der Literatur (Kingma & Ba, 2014) und in der Referenzstudie von Sangwan (2024) mit einer
-    # schnelleren Konvergenz des Modells begründet wird.“
     optimizer = optim.Adam(trainable_params, lr=learning_rate)
 
     # Learning Rate Scheduler: "Reduce on plateau was used"
@@ -625,13 +618,13 @@ mobileNetV3Model = fit(
 
 print("\nEntfriere das gesamte Netzwerk für das Fine-Tuning...")
 
-# Wir tauen nun das gesamte Netzwerk auf, um die tieferen Schichten an die 
+# Das gesamte Netzwerk wird aufgetaut, um die tieferen Schichten an die 
 # spezifischen Hautkrebs-Merkmale anzupassen ("and then all layers were trained 
 # to fine-tune the models" - Alfi et al., 2022).
 for param in mobileNetV3Model.parameters():
     param.requires_grad = True
 
-# Jetzt starten wir das eigentliche lange Training. !
+# Das eigentliche lange Training
 mobileNetV3Model = fit(
     model=mobileNetV3Model, 
     train_loader=train_loader, 
@@ -933,13 +926,13 @@ resNet101Model = fit(
 
 print("\nEntfriere das gesamte Netzwerk für das Fine-Tuning...")
 
-# Wir tauen nun das gesamte Netzwerk auf, um die tieferen Schichten an die 
+# Das gesamte Netzwerk wird aufgetaut, um die tieferen Schichten an die 
 # spezifischen Hautkrebs-Merkmale anzupassen ("and then all layers were trained 
 # to fine-tune the models" - Alfi et al., 2022).
 for param in resNet101Model.parameters():
     param.requires_grad = True
 
-# Jetzt starten wir das eigentliche lange Training. 
+# Das eigentliche lange Training
 resNet101Model = fit(
     model=resNet101Model, 
     train_loader=train_loader, 
@@ -1395,9 +1388,9 @@ loaded_data_mobilenetv3 = torch.load(MODEL_MOBILE_NET_V3_FILE_PATH)
 mobileNetV3Model.load_state_dict(loaded_data_mobilenetv3)
 ```
 
-    C:\Users\jalle\AppData\Local\Temp\ipykernel_9192\2924343579.py:1: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+    C:\Users\jalle\AppData\Local\Temp\ipykernel_22500\2924343579.py:1: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
       loaded_data_resnet101 = torch.load(MODEL_RESNET101_FILE_PATH)
-    C:\Users\jalle\AppData\Local\Temp\ipykernel_9192\2924343579.py:4: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+    C:\Users\jalle\AppData\Local\Temp\ipykernel_22500\2924343579.py:4: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
       loaded_data_mobilenetv3 = torch.load(MODEL_MOBILE_NET_V3_FILE_PATH)
     
 
@@ -1455,7 +1448,7 @@ def evaluateTestData(model, title):
         all_labels,
         all_preds,
         target_names=class_names,
-        digits=4  # 4 Nachkommastellen für Präzision
+        digits=4
     )
     print(report)
 
@@ -1562,7 +1555,7 @@ evaluateTestData(mobileNetV3Model, "MobileNetV3")
 
 
 ## 7. XAI
-Dies ist der methodische Kern des Notebooks. Die zuvor validierten Black-Box-Modelle werden nun mithilfe zweier konzeptionell gegensätzlicher XAI-Methoden durchleuchtet. Das Ziel ist es, die generierten Heatmaps nicht nur visuell zu betrachten, sondern objektiv und quantitativ zu messen.
+Dies ist der methodische Kern des Notebooks. Die zuvor validierten Black-Box-Modelle werden nun mithilfe zweier konzeptionell gegensätzlicher XAI-Methoden untersucht. Das Ziel ist es, die generierten Heatmaps nicht nur visuell zu betrachten, sondern objektiv und quantitativ zu messen.
 
 ### Methode zum Erstellen der XAI-Evaluations-True-Positive-Bilder
 Warum Metriken (wie IROF) auf True Positives beschränkt werden sollten: Wenn man quantitativ messen will, ob Grad-CAM oder LIME die bessere Methode ist, müssen Sie die Fehlerhaftigkeit des neuronalen Netzes von der Fehlerhaftigkeit der XAI-Methode trennen. Wenn ein Modell eine komplett falsche Vorhersage trifft (False Negative oder False Positive), ist die zugrunde liegende Entscheidung per se inkorrekt. Wenn Grad-CAM nun bei einem übersehenen Melanom auf einen völlig irrelevanten Hautbereich zeigt, ist es mathematisch unmöglich zu trennen, ob Grad-CAM als Erklärungsmethode versagt hat, oder ob das Modell bei diesem Bild schlichtweg unsinnige Merkmale gelernt hat. (Zou et al. (2023))
@@ -1595,7 +1588,7 @@ def get_xai_loader(model, num_images=60):
                     tp_indices.append(start_idx + i)
                     all_targets.append(targets[i].item())
 
-    # Ziehe exakt 60 Bilder (stratifiziert, falls möglich)
+    # Ziehe exakt "num_images" Bilder (stratifiziert, falls möglich)
     xai_indices, _ = train_test_split(
         tp_indices, 
         train_size=num_images, 
@@ -1606,7 +1599,6 @@ def get_xai_loader(model, num_images=60):
     # Erstelle ein PyTorch Subset aus den originalen Testdaten
     xai_dataset = Subset(test_dataset, xai_indices)
     
-    # Erstelle den finalen DataLoader (Batch-Size entspricht oft num_images für die Quantus-Metriken)
     return DataLoader(xai_dataset, batch_size=num_images, shuffle=False)
 ```
 
@@ -1629,10 +1621,6 @@ def patched_perturb_func(arr, mask, **kwargs):
 def getMetrics(nr_samples=20):
     # FAITHFULNESS
     metric_irof = quantus.IROF(
-        #perturb_baseline="mean", is default =>  Rieger und Hansen betonen, dass es essenziell ist, die entfernten Bildsegmente durch den Mittelwert des Datensatzes zu ersetzen und nicht durch Rauschen (Uniform Noise) oder schwarze Pixel
-    #. Rauschen würde das Bild so stark verfälschen, dass es außerhalb der gelernten Datenverteilung ("out-of-distribution") liegt
-    #. Man würde dann nicht mehr messen, ob das Feature wichtig war, sondern nur, dass das CNN durch künstliches Rauschen verwirrt wird
-    
         perturb_func=patched_perturb_func,
         return_aggregate=False,
         disable_warnings=True
@@ -1672,7 +1660,7 @@ def score_display_helper(scores):
 ```
 
 ### Definiere Lime
-Als Repräsentant der perturbationsbasierten Ansätze implementieren wir hier LIME (Local Interpretable Model-agnostic Explanations). LIME behandelt das CNN als Black-Box, unterteilt das Bild in Superpixel und maskiert diese systematisch, um zu messen, wie sich die Modellvorhersage verändert. Die Hyperparameter (Anzahl der Segmente und Perturbationen) sind kritisch für die Qualität der Erklärung.
+LIME behandelt das CNN als Black-Box, unterteilt das Bild in Superpixel und maskiert diese systematisch, um zu messen, wie sich die Modellvorhersage verändert. Die Hyperparameter (Anzahl der Segmente und Perturbationen) sind kritisch für die Qualität der Erklärung.
 
 
 ```python
@@ -1757,7 +1745,7 @@ def evaluateLIME(model, x_batch, y_batch, nr_samples=20, num_samples=1000, num_f
 ```
 
 ### Definiere Grad-CAM
-Als Repräsentant der gradientenbasierten Ansätze wird Grad-CAM (Gradient-weighted Class Activation Mapping) definiert. Es schaut direkt in die Architektur des CNNs und berechnet die Heatmap aus dem Gradientenfluss der letzten Faltungsschicht in nur einem einzigen Vorwärts- und Rückwärtsdurchlauf.
+Grad-CAM schaut direkt in die Architektur des CNNs und berechnet die Heatmap aus dem Gradientenfluss der letzten Faltungsschicht in nur einem einzigen Vorwärts- und Rückwärtsdurchlauf.
 
 
 ```python
@@ -1771,7 +1759,6 @@ def get_gradcam_explainer(model, target_layer):
         inputs = torch.as_tensor(inputs, device=device)
         targets = torch.as_tensor(targets, device=device)
 
-        # Wichtig: Gradienten nullen, um Akkumulation zu verhindern
         model.zero_grad()
 
         attr = explainer.attribute(inputs, target=targets)
@@ -1827,16 +1814,16 @@ inputs, labels = next(iter(xai_image_loader))
 x_images, y_images = inputs[:max_images].numpy(), labels[:max_images].numpy()
 
 experiments = [
-    {"run": 1, "method": "GradCAM", "robustness_samples": 5}, # Wie ändert sich der LocalLipschitzEstimate bei nur 5 Test-Varianten?
-    {"run": 2, "method": "GradCAM", "robustness_samples": 10}, # Basis-Vergleichswert der Robustness und Faithfulness zu LIME.
-    {"run": 3, "method": "GradCAM", "robustness_samples": 20}, # Sinkt die gemessene Instabilität durch die Glättung von mehr Runs?
-    {"run": 4, "method": "LIME", "n_samples": 500, "k_features": 50, "robustness_samples": 10}, # Mittlere Parameter für alle Metriken
-    {"run": 5, "method": "LIME", "n_samples": 100, "k_features": 50, "robustness_samples": 10}, # Wie stark sinkt die Rechenzeit und Faithfulness bei nur 100 Samples?
-    {"run": 6, "method": "LIME", "n_samples": 1000, "k_features": 50, "robustness_samples": 10}, # Steigt die Erklärungstreue bei 1000 Samples spürbar an? (Achtung: lange Dauer 
-    {"run": 7, "method": "LIME", "n_samples": 500, "k_features": 10, "robustness_samples": 10}, #Standard-LIME-Wert für Menschen. Verschlechtern sich dadurch die Maschinen-Scores in Quantus?
-    {"run": 8, "method": "LIME", "n_samples": 500, "k_features": 10000000000, "robustness_samples": 10}, # Zwingt LIME zu einer dichten Map (wie Grad-CAM). Wie verhalten sich Faithfulness/Robustness?
-    {"run": 9, "method": "LIME", "n_samples": 500, "k_features": 50, "robustness_samples": 5}, # Beschleunigt dies die Robustness-Metrik, ohne das Ergebnis zu verfälschen?
-    {"run": 10, "method": "LIME", "n_samples": 500, "k_features": 50, "robustness_samples": 20} #Zeigt die Robustheit bei mehr Messpunkten weniger Schwankungen?
+    {"run": 1, "method": "GradCAM", "robustness_samples": 5}, 
+    {"run": 2, "method": "GradCAM", "robustness_samples": 10}, 
+    {"run": 3, "method": "GradCAM", "robustness_samples": 20}, 
+    {"run": 4, "method": "LIME", "n_samples": 500, "k_features": 50, "robustness_samples": 10}, 
+    {"run": 5, "method": "LIME", "n_samples": 100, "k_features": 50, "robustness_samples": 10}, 
+    {"run": 6, "method": "LIME", "n_samples": 1000, "k_features": 50, "robustness_samples": 10}, 
+    {"run": 7, "method": "LIME", "n_samples": 500, "k_features": 10, "robustness_samples": 10}, 
+    {"run": 8, "method": "LIME", "n_samples": 500, "k_features": 10000000000, "robustness_samples": 10}, 
+    {"run": 9, "method": "LIME", "n_samples": 500, "k_features": 50, "robustness_samples": 5},
+    {"run": 10, "method": "LIME", "n_samples": 500, "k_features": 50, "robustness_samples": 20} 
 ]
 
 def evaluate(model, targetLayer, title):
@@ -2398,18 +2385,17 @@ Um die berechneten quantitativen Metriken in einen praktischen Kontext zu setzen
 ```python
 def visualize_explanations(model, images, labels, target_layer, title, img_idx=0):
 
-   # 1. Daten vorbereiten (Direkt 1 Bild auswählen)
+   # Daten vorbereiten (Direkt 1 Bild auswählen)
     input_img = images[img_idx: img_idx+1].to(device)
     target = labels[img_idx: img_idx+1].to(device)
     
-    # --- DIE TENSOR-GYMNASTIK ---
     # Bild für den Plot vorbereiten: Von GPU auf CPU, zu Numpy, Format drehen (H,W,C)
     img_for_plot = input_img[0].detach().cpu().permute(1, 2, 0).numpy()
     # Farben für Matplotlib in den Bereich [0, 1] zwingen
     img_for_plot = (img_for_plot - img_for_plot.min()) / (img_for_plot.max() - img_for_plot.min() + 1e-8)
     # ----------------------------
 
-    # 2. Erklärungen generieren
+    # Erklärungen generieren
     # --- Grad-CAM ---
     gradcam_func = get_gradcam_explainer(model, target_layer)
     attr_gradcam = gradcam_func(model, input_img, target)[0] 
@@ -2420,7 +2406,7 @@ def visualize_explanations(model, images, labels, target_layer, title, img_idx=0
     attr_lime_raw = lime_func(model, input_img, target)[0] # Erstes Bild aus Batch
     attr_lime = np.expand_dims(attr_lime_raw, axis=-1).astype(float)
     
-    # 3. Visualisierung
+    # Visualisierung
     fig, axs = plt.subplots(1, 3, figsize=(15, 5))
     fig.suptitle(f"XAI Evaluation: {title}", fontsize=16, fontweight='bold', y=1.05)
     
@@ -2445,7 +2431,6 @@ def visualize_explanations(model, images, labels, target_layer, title, img_idx=0
     plt.tight_layout()
     plt.show()
 
-
 resNet101Model.to(device)
 mobileNetV3Model.to(device)
 
@@ -2461,7 +2446,9 @@ visualize_explanations(mobileNetV3Model, images, labels, mobileNetV3Model.featur
 ```
 
 
-      0%|          | 0/1000 [00:00<?, ?it/s]
+    
+![png](output_54_0.png)
+    
 
 
 
@@ -2471,7 +2458,9 @@ visualize_explanations(mobileNetV3Model, images, labels, mobileNetV3Model.featur
 
 
 
-      0%|          | 0/1000 [00:00<?, ?it/s]
+    
+![png](output_54_2.png)
+    
 
 
 
@@ -2500,7 +2489,7 @@ model.eval()
 global_mean_color = img.mean(axis=(0, 1))
 
 # Superpixel-Segmentierung (SLIC)
-# n_segments definiert die ungefähre Anzahl der Superpixel
+# n_segments definiert die Anzahl der Superpixel
 segments = slic(img, n_segments=60, compactness=15, sigma=1, start_label=1)
 
 # Simulation der Relevanz (XAI-Methode) & Maskierung
@@ -2527,14 +2516,10 @@ top_segments_to_mask = sorted_segments[:num_to_mask]
 for seg_id in top_segments_to_mask:
     masked_img[segments == seg_id] = global_mean_color
 
-# ==========================================
-# 4. Simulation der AOC-Kurve (Modell-Konfidenz)
-# ==========================================
+# Simulation der AOC-Kurve (Modell-Konfidenz)
 fractions = np.linspace(0, 1, 10)
 
-# ==========================================
 # 5. Plotten der Schematischen Abbildung
-# ==========================================
 fig, axes = plt.subplots(1, 2, figsize=(10, 5))
 plt.rcParams.update({'font.size': 12})
 
@@ -2574,7 +2559,7 @@ def plot_gradcam_instability(model, images, labels, target_layer, img_idx=0, noi
     input_img = images[img_idx: img_idx+1].to(device)
     target = labels[img_idx: img_idx+1].to(device)
     
-    # Minimales, kaum wahrnehmbares Rauschen hinzufügen (Gaussian Noise)
+    # Minimales, kaum wahrnehmbares Rauschen hinzufügen 
     # Entspricht methodisch Alvarez-Melis & Jaakkola (2018)
     noise = torch.randn_like(input_img) * noise_std
     noisy_img = input_img + noise
@@ -2606,7 +2591,7 @@ def plot_gradcam_instability(model, images, labels, target_layer, img_idx=0, noi
         attr_noisy = np.squeeze(attr_noisy, axis=0)
         attr_noisy = np.transpose(attr_noisy, (1, 2, 0))
     
-    # 5. Visualisierung
+    # Visualisierung
     fig, axs = plt.subplots(1, 3, figsize=(18, 6))
     fig.suptitle("Instabilität von Grad-CAM gegenüber minimalem Rauschen", fontsize=18, fontweight='bold', y=1.05)
     
@@ -2617,13 +2602,13 @@ def plot_gradcam_instability(model, images, labels, target_layer, img_idx=0, noi
         title="Originalbild\n+ saubere Heatmap", plt_fig_axis=(fig, axs[0])
     )
     
-    # Spalte 2: Das "+" Zeichen und das Kästchen (KORRIGIERT auf axs[1])
+    # Spalte 2: Das "+" Zeichen und das Kästchen
     axs[1].axis('off')
     axs[1].text(0.5, 0.5, '+\n\nMinimales,\nkaum wahrnehmbares\nRauschen', 
                 fontsize=16, ha='center', va='center', fontweight='bold',
                 bbox=dict(boxstyle="round,pad=1.5", fc="#f0f0f0", ec="#333333", lw=2))
     
-    # Spalte 3: Gestörtes Bild + zerschossene Heatmap (KORRIGIERT auf axs[2])
+    # Spalte 3: Gestörtes Bild + zerschossene Heatmap
     viz.visualize_image_attr(
         attr_noisy, img_noisy_plot, method="blended_heat_map", sign="positive",
         show_colorbar=False, use_pyplot=False, cmap='jet',
@@ -2657,9 +2642,7 @@ faith_lime_resnet = [95.3843, 93.0254, 72.6334, 74.6706, 41.0587, 88.0995, 97.19
 faith_grad_mobile = [72.5006, 70.7878, 50.7137, 60.8615, 97.5067, 59.3278, 75.5358, 57.5677, 59.2563, 60.6992, 74.4819, 63.5735, 61.5025, 45.6514, 45.7368, 83.8703, 74.4330, 56.5331, 51.5321, 74.1804, 68.0454, 56.8509, 68.5039, 66.9797, 69.1891, 73.9265, 68.3551, 69.5187, 62.1980, 75.3556, 56.5144, 69.6368]
 faith_lime_mobile = [88.5003, 88.4945, 77.5003, 57.4547, 95.0418, 85.5054, 79.5432, 78.5062, 91.5001, 82.5265, 81.5076, 20.6079, 80.5028, 34.5925, 80.5012, 85.3994, 80.4488, 70.5000, 80.4672, 87.7723, 80.5640, 84.5000, 71.8674, 84.6490, 81.5263, 74.4985, 84.0372, 85.4794, 54.6581, 79.5296, 55.4725, 86.1748]
 
-# ==========================================
-# 2. DATAFRAME ERSTELLEN FÜR SEABORN
-# ==========================================
+# DATAFRAME ERSTELLEN FÜR SEABORN
 data = []
 
 # ResNet-Daten anhängen
@@ -2676,9 +2659,7 @@ for val in faith_lime_mobile:
 
 df = pd.DataFrame(data)
 
-# ==========================================
-# 3. GRUPPIERTEN PLOT ERSTELLEN
-# ==========================================
+# GRUPPIERTEN PLOT ERSTELLEN
 plt.figure(figsize=(10, 6))
 
 # 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
@@ -2715,9 +2696,7 @@ rob_lime_resnet = [3.8418, 2.8845, 3.8538, 4.4504, 4.2564, 2.7260, 3.5545, 2.364
 rob_grad_mobile = [0.7097, 0.6681, 0.8816, 0.4865, 1.1775, 0.5829, 0.6501, 0.4085, 0.4496, 0.8294, 0.5072, 0.4014, 0.5497, 1.1570, 0.6064, 0.5399, 0.8510, 1.0451, 0.5004, 0.3343, 0.8197, 0.6624, 0.3924, 0.3940, 0.3953, 0.3438, 0.6943, 0.7485, 0.5052, 0.6698, 0.4329, 1.2174]
 rob_lime_mobile = [4.0894, 3.7771, 4.0946, 3.8661, 1.7568, 4.3499, 4.2848, 3.4363, 3.3535, 4.1333, 3.5779, 4.2505, 3.7168, 4.1855, 4.2790, 3.8350, 3.4277, 3.9310, 4.5469, 4.0588, 3.7591, 3.8111, 4.0400, 3.9605, 4.4344, 3.3326, 4.1966, 4.0342, 5.0852, 4.0954, 4.5749, 3.8844]
 
-# ==========================================
-# 2. DATAFRAME ERSTELLEN FÜR SEABORN
-# ==========================================
+# DATAFRAME ERSTELLEN FÜR SEABORN
 data = []
 
 # ResNet-Daten anhängen
@@ -2734,9 +2713,7 @@ for val in rob_lime_mobile:
 
 df = pd.DataFrame(data)
 
-# ==========================================
-# 3. GRUPPIERTEN PLOT ERSTELLEN
-# ==========================================
+# GRUPPIERTEN PLOT ERSTELLEN
 plt.figure(figsize=(10, 6))
 
 # 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
@@ -2772,11 +2749,9 @@ def show_sanity_check_grid(model, test_loader, target_layer, class_names, max_im
     """
     model.eval() 
     
-    # 1. DEINE eigene Initialisierung (kein LayerAttribution mehr!)
     gradcam_func = get_gradcam_explainer(model, target_layer)
     
-    # Grid-Layout initialisieren (max_images Zeilen, 2 Spalten)
-    # fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+    # Grid-Layout initialisieren 
     fig, axes = plt.subplots(nrows=max_images, ncols=2, figsize=(5, 3 * max_images))
     
     found_images = 0
@@ -2822,7 +2797,7 @@ def show_sanity_check_grid(model, test_loader, target_layer, class_names, max_im
                 else:
                     heatmap = np.squeeze(attr_orig)
                     
-                # (Optional) Werte bereinigen, falls deine Funktion das noch nicht intern tut
+                # Werte bereinigen
                 heatmap = np.maximum(heatmap, 0) # Nur positive Einflüsse
                 if np.max(heatmap) > 0:
                     heatmap /= np.max(heatmap) # Normalisieren auf 0 bis 1
@@ -2834,11 +2809,6 @@ def show_sanity_check_grid(model, test_loader, target_layer, class_names, max_im
                 ax_orig.imshow(img_np)
                 ax_orig.set_title(f"Wahr: {class_names[true_label]}. Vorhersage: {class_names[pred_label]}")
                 ax_orig.axis('off')
-                
-                # Textbeschriftung an den Rand setzen
-                #label_text = f"Wahr: {class_names[true_label]}\nVorhersage: {class_names[pred_label]}"
-                #ax_orig.set_ylabel(label_text, fontsize=12, labelpad=15, rotation=0, 
-                                  # ha='right', va='center', fontweight='bold')
                 
                 # Rechte Spalte: OVERLAY (Original + Heatmap)
                 ax_heat = axes[found_images, 1]
@@ -2881,9 +2851,8 @@ n_1000_res = [77.8755, 90.4531, 73.7901, 72.6711, 44.0357, 88.1461, 95.1130, 89.
 n_100_mobile = [89.5013, 83.0935, 69.2984, 60.5206, 94.3097, 81.5001, 86.4588, 64.5987, 83.3683, 66.4747, 82.4955, 30.1230, 83.7538, 40.5003, 83.7339, 80.5213, 77.8904, 68.1655, 62.2063, 87.5585, 78.5000, 78.5287, 70.6918, 70.4988, 78.6570, 70.5000, 74.1070, 79.9698, 67.1936, 66.4994, 63.1955, 83.4815]
 n_500_mobile = [88.5003, 88.4945, 77.5003, 57.4547, 95.0418, 85.5054, 79.5432, 78.5062, 91.5001, 82.5265, 81.5076, 20.6079, 80.5028, 34.5925, 80.5012, 85.3994, 80.4488, 70.5000, 80.4672, 87.7723, 80.5640, 84.5000, 71.8674, 84.6490, 81.5263, 74.4985, 84.0372, 85.4794, 54.6581, 79.5296, 55.4725, 86.1748]
 n_1000_mobile = [83.0917, 88.7153, 74.9337, 76.1848, 95.3498, 88.4310, 74.5220, 82.1325, 84.5001, 78.0479, 88.3940, 4.9045, 90.5006, 41.4787, 83.5001, 85.5386, 80.4955, 65.4711, 84.1839, 86.4407, 80.4976, 88.5000, 71.5001, 80.5129, 81.4561, 68.7133, 88.0343, 86.5002, 42.3091, 69.5005, 55.4811, 86.2467]
-# ==========================================
-# 2. DATAFRAME ERSTELLEN FÜR SEABORN
-# ==========================================
+
+# DATAFRAME ERSTELLEN FÜR SEABORN
 data = []
 
 # ResNet-Daten anhängen
@@ -2903,9 +2872,7 @@ for val in n_1000_mobile:
 
 df = pd.DataFrame(data)
 
-# ==========================================
-# 3. GRUPPIERTEN PLOT ERSTELLEN
-# ==========================================
+# GRUPPIERTEN PLOT ERSTELLEN
 plt.figure(figsize=(10, 6))
 
 # 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
@@ -2942,9 +2909,8 @@ k_max_res = [77.8755, 90.4531, 73.7901, 72.6711, 44.0357, 88.1461, 95.1130, 89.2
 k_10_mobile = [84.4992, 83.4989, 67.5304, 54.2943, 98.4235, 84.4998, 89.9298, 71.5033, 76.5090, 82.4735, 83.5525, 10.2666, 89.5448, 28.4993, 86.8925, 88.2326, 80.4995, 73.4953, 82.7381, 92.0222, 83.8738, 89.5000, 82.6563, 75.5825, 83.5080, 70.5090, 84.5047, 88.5022, 56.6087, 81.6141, 47.1862, 91.4889]
 k_50_mobile = [88.5003, 88.4945, 77.5003, 57.4547, 95.0418, 85.5054, 79.5432, 78.5062, 91.5001, 82.5265, 81.5076, 20.6079, 80.5028, 34.5925, 80.5012, 85.3994, 80.4488, 70.5000, 80.4672, 87.7723, 80.5640, 84.5000, 71.8674, 84.6490, 81.5263, 74.4985, 84.0372, 85.4794, 54.6581, 79.5296, 55.4725, 86.1748]
 k_max_mobile = [93.5326, 94.1756, 73.4013, 75.9820, 46.1091, 88.2163, 97.6152, 80.5066, 91.0840, 88.6232, 87.5820, -223.7589, 92.6977, 69.1710, 92.0066, 95.5704, 83.5711, 52.9979, 86.8752, 93.0153, 81.7288, 76.8155, 85.9664, 90.4853, 92.7943, 60.0665, 84.2727, 74.1923, 10.9006, 71.6434, 59.4583, 90.7348]
-# ==========================================
-# 2. DATAFRAME ERSTELLEN FÜR SEABORN
-# ==========================================
+
+# DATAFRAME ERSTELLEN FÜR SEABORN
 data = []
 
 # ResNet-Daten anhängen
@@ -2964,9 +2930,7 @@ for val in k_max_mobile:
 
 df = pd.DataFrame(data)
 
-# ==========================================
-# 3. GRUPPIERTEN PLOT ERSTELLEN
-# ==========================================
+# GRUPPIERTEN PLOT ERSTELLEN
 plt.figure(figsize=(10, 6))
 
 # 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
@@ -3003,9 +2967,8 @@ n_1000_res = [3.7366, 3.0796, 3.6822, 4.6150, 4.5194, 3.2344, 3.6938, 1.8031, 3.
 n_100_mobile = [3.9595, 3.9884, 4.2439, 4.1636, 2.9774, 4.5703, 4.0803, 3.7125, 4.0227, 4.3291, 4.0042, 4.4338, 3.6084, 4.0558, 3.5650, 3.9185, 3.8098, 3.9813, 3.7762, 3.9084, 4.4613, 4.0170, 3.6894, 4.2606, 4.2998, 3.5191, 4.7208, 4.1149, 3.8998, 4.4114, 3.0188, 4.0157]
 n_500_mobile = [4.0894, 3.7771, 4.0946, 3.8661, 1.7568, 4.3499, 4.2848, 3.4363, 3.3535, 4.1333, 3.5779, 4.2505, 3.7168, 4.1855, 4.2790, 3.8350, 3.4277, 3.9310, 4.5469, 4.0588, 3.7591, 3.8111, 4.0400, 3.9605, 4.4344, 3.3326, 4.1966, 4.0342, 5.0852, 4.0954, 4.5749, 3.8844]
 n_1000_mobile = [3.9306, 4.0817, 4.1640, 3.7511, 1.3295, 4.3668, 4.3336, 3.7301, 3.6866, 4.4174, 3.6776, 4.2574, 3.9819, 4.2785, 4.1790, 4.2202, 3.4473, 3.6771, 3.1560, 4.1506, 3.4838, 3.6000, 4.1587, 3.9996, 4.3002, 3.8735, 4.2639, 3.8884, 4.7615, 3.9452, 4.7342, 3.8939]
-# ==========================================
-# 2. DATAFRAME ERSTELLEN FÜR SEABORN
-# ==========================================
+
+# DATAFRAME ERSTELLEN FÜR SEABORN
 data = []
 
 # ResNet-Daten anhängen
@@ -3025,9 +2988,7 @@ for val in n_1000_mobile:
 
 df = pd.DataFrame(data)
 
-# ==========================================
-# 3. GRUPPIERTEN PLOT ERSTELLEN
-# ==========================================
+# GRUPPIERTEN PLOT ERSTELLEN
 plt.figure(figsize=(10, 6))
 
 # 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
@@ -3064,9 +3025,8 @@ k_max_res = [3.9123, 2.6367, 3.9929, 4.6454, 4.5261, 3.4545, 3.6472, 1.8767, 3.9
 k_10_mobile = [4.0427, 3.9356, 3.7113, 3.4489, 3.8125, 4.0956, 3.8815, 3.9795, 3.6937, 3.6992, 3.9222, 3.5767, 3.8447, 3.6279, 4.0902, 4.7252, 4.3188, 3.9783, 3.7571, 4.2625, 4.0238, 4.4266, 3.6778, 3.8896, 4.0328, 3.7632, 4.3158, 3.8743, 3.6388, 4.1999, 3.8055, 4.6181]
 k_50_mobile = [4.0894, 3.7771, 4.0946, 3.8661, 1.7568, 4.3499, 4.2848, 3.4363, 3.3535, 4.1333, 3.5779, 4.2505, 3.7168, 4.1855, 4.2790, 3.8350, 3.4277, 3.9310, 4.5469, 4.0588, 3.7591, 3.8111, 4.0400, 3.9605, 4.4344, 3.3326, 4.1966, 4.0342, 5.0852, 4.0954, 4.5749, 3.8844]
 k_max_mobile = [3.8833, 3.9626, 4.1395, 4.1078, 0.7631, 4.3696, 3.8582, 3.1134, 3.8382, 4.3969, 4.0040, 4.4830, 3.1913, 3.8460, 4.5340, 4.0321, 3.5743, 3.7008, 3.6591, 3.7864, 3.9661, 3.7336, 3.8996, 4.1442, 4.0586, 3.4201, 4.1124, 3.9444, 4.4541, 4.2782, 4.0508, 4.2164]
-# ==========================================
-# 2. DATAFRAME ERSTELLEN FÜR SEABORN
-# ==========================================
+
+# DATAFRAME ERSTELLEN FÜR SEABORN
 data = []
 
 # ResNet-Daten anhängen
@@ -3086,9 +3046,7 @@ for val in k_max_mobile:
 
 df = pd.DataFrame(data)
 
-# ==========================================
-# 3. GRUPPIERTEN PLOT ERSTELLEN
-# ==========================================
+# GRUPPIERTEN PLOT ERSTELLEN
 plt.figure(figsize=(10, 6))
 
 # 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
@@ -3125,9 +3083,8 @@ grad_20_res = [0.4823, 0.3559, 0.4191, 0.5749, 0.9457, 0.3180, 0.2926, 0.3097, 0
 grad_5_mobile = [0.4974, 0.6131, 0.6563, 0.4625, 1.2092, 0.6337, 0.8139, 0.6132, 0.3894, 0.8791, 0.3785, 0.4222, 0.5954, 1.0985, 0.5102, 0.6077, 1.0033, 0.9634, 0.5201, 0.4174, 0.7291, 0.8665, 0.4002, 0.3390, 0.7216, 0.4995, 0.5592, 0.9180, 0.4675, 0.7675, 0.4230, 0.9296]
 grad_10_mobile = [0.7097, 0.6681, 0.8816, 0.4865, 1.1775, 0.5829, 0.6501, 0.4085, 0.4496, 0.8294, 0.5072, 0.4014, 0.5497, 1.1570, 0.6064, 0.5399, 0.8510, 1.0451, 0.5004, 0.3343, 0.8197, 0.6624, 0.3924, 0.3940, 0.3953, 0.3438, 0.6943, 0.7485, 0.5052, 0.6698, 0.4329, 1.2174]
 grad_20_mobile = [0.6044, 0.7597, 0.7601, 0.5410, 1.3981, 0.5961, 0.7625, 0.4234, 0.5948, 0.8808, 0.4908, 0.5128, 0.6060, 1.2027, 0.6135, 0.8487, 0.8597, 0.8787, 0.6040, 0.3270, 0.8750, 0.8694, 0.5891, 0.3311, 0.4262, 0.5532, 0.6832, 0.5803, 0.5618, 0.8112, 0.4944, 1.0616]
-# ==========================================
-# 2. DATAFRAME ERSTELLEN FÜR SEABORN
-# ==========================================
+
+# DATAFRAME ERSTELLEN FÜR SEABORN
 data = []
 
 # ResNet-Daten anhängen
@@ -3147,9 +3104,7 @@ for val in grad_20_mobile:
 
 df = pd.DataFrame(data)
 
-# ==========================================
-# 3. GRUPPIERTEN PLOT ERSTELLEN
-# ==========================================
+# GRUPPIERTEN PLOT ERSTELLEN
 plt.figure(figsize=(10, 6))
 
 # 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
@@ -3186,9 +3141,8 @@ lime_20_res = [4.0449, 3.0378, 3.8882, 4.7597, 4.4938, 3.4097, 3.7676, 2.7349, 3
 lime_5_mobile = [3.8579, 4.2468, 3.5888, 3.7261, 1.6102, 4.3583, 3.7075, 3.5731, 3.9694, 4.1527, 3.7933, 4.6472, 4.0045, 3.8150, 3.7350, 4.0865, 3.5654, 3.7070, 3.4209, 3.5368, 3.6465, 3.4953, 3.7277, 3.9705, 4.1415, 3.7088, 4.2927, 3.7018, 4.7062, 4.1435, 4.0301, 3.8659]
 lime_10_mobile = [4.0894, 3.7771, 4.0946, 3.8661, 1.7568, 4.3499, 4.2848, 3.4363, 3.3535, 4.1333, 3.5779, 4.2505, 3.7168, 4.1855, 4.2790, 3.8350, 3.4277, 3.9310, 4.5469, 4.0588, 3.7591, 3.8111, 4.0400, 3.9605, 4.4344, 3.3326, 4.1966, 4.0342, 5.0852, 4.0954, 4.5749, 3.8844]
 lime_20_mobile = [3.9188, 3.8571, 4.0549, 3.9125, 2.0330, 4.3971, 3.8941, 3.6919, 3.7337, 4.3873, 3.8179, 4.3899, 3.7338, 4.2349, 4.2048, 4.4535, 3.3066, 3.8918, 3.8988, 4.5634, 3.8753, 3.7171, 4.0570, 4.0706, 4.4322, 3.6988, 3.9675, 3.9739, 4.5919, 4.3885, 4.3758, 3.9331]
-# ==========================================
-# 2. DATAFRAME ERSTELLEN FÜR SEABORN
-# ==========================================
+
+# DATAFRAME ERSTELLEN FÜR SEABORN
 data = []
 
 # ResNet-Daten anhängen
@@ -3208,9 +3162,7 @@ for val in lime_20_mobile:
 
 df = pd.DataFrame(data)
 
-# ==========================================
-# 3. GRUPPIERTEN PLOT ERSTELLEN
-# ==========================================
+# GRUPPIERTEN PLOT ERSTELLEN
 plt.figure(figsize=(10, 6))
 
 # 'hue' und 'split' sorgen für die überlagerte, direkte Vergleichsansicht
