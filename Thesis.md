@@ -50,6 +50,7 @@ from sklearn.metrics import accuracy_score, classification_report, f1_score, pre
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from scipy import stats
+from scipy.stats import rankdata
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -2449,6 +2450,68 @@ perform_statistical_analysis("Erklärungstreue (IROF) - MobileNetV3", mobile_iro
     
     
 
+### Rangbiseriale Korrelation 
+
+
+```python
+# Robustheit (Local Lipschitz Estimate)
+# ResNet-101
+resnet_robust_gradcam = [0.4978, 0.3080, 0.4263, 0.5489, 0.8447, 0.3769, 0.3219, 0.2381, 0.3372, 0.3039, 0.4965, 0.4078, 0.5115, 0.5372, 0.3691, 0.4088, 0.2640, 0.3070, 0.5233, 0.3735, 0.3791, 0.5636, 0.2489, 0.4400, 0.3927, 0.3651, 0.4413, 0.3358, 0.2797, 0.2555, 0.3301, 0.3631]
+resnet_robust_lime = [3.8418, 2.8845, 3.8538, 4.4504, 4.2564, 2.7260, 3.5545, 2.3642, 4.0133, 3.6287, 2.7081, 3.9644, 4.2840, 4.3270, 2.5422, 3.6065, 3.2170, 3.3542, 2.5685, 3.0853, 2.4752, 4.1419, 3.0047, 2.2746, 3.3271, 4.1186, 4.0903, 3.0678, 4.4462, 3.5988, 4.6320, 4.3107]
+
+# MobileNetV3
+mobile_robust_gradcam = [0.7097, 0.6681, 0.8816, 0.4865, 1.1775, 0.5829, 0.6501, 0.4085, 0.4496, 0.8294, 0.5072, 0.4014, 0.5497, 1.1570, 0.6064, 0.5399, 0.8510, 1.0451, 0.5004, 0.3343, 0.8197, 0.6624, 0.3924, 0.3940, 0.3953, 0.3438, 0.6943, 0.7485, 0.5052, 0.6698, 0.4329, 1.2174]
+mobile_robust_lime = [4.0894, 3.7771, 4.0946, 3.8661, 1.7568, 4.3499, 4.2848, 3.4363, 3.3535, 4.1333, 3.5779, 4.2505, 3.7168, 4.1855, 4.2790, 3.8350, 3.4277, 3.9310, 4.5469, 4.0588, 3.7591, 3.8111, 4.0400, 3.9605, 4.4344, 3.3326, 4.1966, 4.0342, 5.0852, 4.0954, 4.5749, 3.8844]
+
+# Erklärungstreue (IROF) 
+# ResNet-101
+resnet_irof_gradcam = [88.7956, 92.2554, 82.0588, 84.8718, 70.0388, 91.4328, 96.3660, 86.9614, 89.3372, 92.6883, 91.9495, 40.1223, 98.9729, 67.9238, 94.0551, 95.2775, 77.5485, 64.1116, 87.3224, 94.4852, 88.4855, 51.4109, 93.1069, 89.6435, 97.2225, 69.3984, 89.6065, 92.6906, 45.8640, 89.2520, 63.9220, 89.5450]
+resnet_irof_lime = [95.3843, 93.0254, 72.6334, 74.6706, 41.0587, 88.0995, 97.1959, 79.2875, 94.6148, 91.8867, 93.6708, -31.5080, 93.6780, 65.1845, 91.9265, 95.3450, 81.4816, 42.6585, 78.9212, 93.2822, 85.9363, 83.4860, 82.0321, 89.0417, 93.5983, 33.1304, 83.5632, 93.4796, 29.5484, 48.1101, 66.3444, 89.0515]
+
+# MobileNetV3
+mobile_irof_gradcam = [72.5006, 70.7878, 50.7137, 60.8615, 97.5067, 59.3278, 75.5358, 57.5677, 59.2563, 60.6992, 74.4819, 63.5735, 61.5025, 45.6514, 45.7368, 83.8703, 74.4330, 56.5331, 51.5321, 74.1804, 68.0454, 56.8509, 68.5039, 66.9797, 69.1891, 73.9265, 68.3551, 69.5187, 62.1980, 75.3556, 56.5144, 69.6368]
+mobile_irof_lime = [88.5003, 88.4945, 77.5003, 57.4547, 95.0418, 85.5054, 79.5432, 78.5062, 91.5001, 82.5265, 81.5076, 20.6079, 80.5028, 34.5925, 80.5012, 85.3994, 80.4488, 70.5000, 80.4672, 87.7723, 80.5640, 84.5000, 71.8674, 84.6490, 81.5263, 74.4985, 84.0372, 85.4794, 54.6581, 79.5296, 55.4725, 86.1748]
+
+def rangbiseriale_korrelation(name, x, y):
+    # Berechnet die Rangbiseriale Korrelation (r_rb) als Effektstärke 
+    # passend zum Wilcoxon-Vorzeichen-Rang-Test (nach Kerby 2014).
+
+    diffs = np.array(x) - np.array(y)
+    diffs = diffs[diffs != 0]
+    
+    if len(diffs) == 0:
+        return 0.0
+        
+    # Ränge der absoluten Differenzen bilden
+    ranks = rankdata(np.abs(diffs))
+    
+    # Summe der Ränge für positive (W+) und negative (W-) Differenzen
+    w_plus = np.sum(ranks[diffs > 0])
+    w_minus = np.sum(ranks[diffs < 0])
+    
+    # Rangbiseriale Korrelation berechnen
+    r_rb = (w_plus - w_minus) / (w_plus + w_minus)
+    print(f"{name}: {r_rb:.3f}\n") 
+
+print("Rangbiseriale Korrelation (Grad-CAM vs LIME)\n")
+rangbiseriale_korrelation("Robustheit (Lipschitz) - ResNet-101", resnet_robust_gradcam, resnet_robust_lime)
+rangbiseriale_korrelation("Robustheit (Lipschitz) - MobileNetV3", mobile_robust_gradcam, mobile_robust_lime)
+rangbiseriale_korrelation("Erklärungstreue (IROF) - ResNet-101", resnet_irof_gradcam, resnet_irof_lime)
+rangbiseriale_korrelation("Erklärungstreue (IROF) - MobileNetV3", mobile_irof_gradcam, mobile_irof_lime)
+```
+
+    Rangbiseriale Korrelation (Grad-CAM vs LIME)
+    
+    Robustheit (Lipschitz) - ResNet-101: -1.000
+    
+    Robustheit (Lipschitz) - MobileNetV3: -1.000
+    
+    Erklärungstreue (IROF) - ResNet-101: 0.549
+    
+    Erklärungstreue (IROF) - MobileNetV3: -0.746
+    
+    
+
 ## 8. Visualisierungen
 
 ### Heatmap-Visualisierung eines Beispielbildes
@@ -2520,25 +2583,25 @@ visualize_explanations(mobileNetV3Model, images, labels, mobileNetV3Model.featur
 
 
     
-![png](output_56_0.png)
+![png](output_58_0.png)
     
 
 
 
     
-![png](output_56_1.png)
+![png](output_58_1.png)
     
 
 
 
     
-![png](output_56_2.png)
+![png](output_58_2.png)
     
 
 
 
     
-![png](output_56_3.png)
+![png](output_58_3.png)
     
 
 
@@ -2614,7 +2677,7 @@ plt.show()
 
 
     
-![png](output_58_0.png)
+![png](output_60_0.png)
     
 
 
@@ -2699,7 +2762,7 @@ plot_gradcam_instability(resNet101Model, images, labels, resNet101Model.layer4[-
 
 
     
-![png](output_60_0.png)
+![png](output_62_0.png)
     
 
 
@@ -2753,7 +2816,7 @@ plt.show()
 
 
     
-![png](output_62_0.png)
+![png](output_64_0.png)
     
 
 
@@ -2807,7 +2870,7 @@ plt.show()
 
 
     
-![png](output_64_0.png)
+![png](output_66_0.png)
     
 
 
@@ -2906,7 +2969,7 @@ show_sanity_check_grid(mobileNetV3Model, test_loader, mobileNetV3Model.features[
 
 
     
-![png](output_66_0.png)
+![png](output_68_0.png)
     
 
 
@@ -2966,7 +3029,7 @@ plt.show()
 
 
     
-![png](output_69_0.png)
+![png](output_71_0.png)
     
 
 
@@ -3024,7 +3087,7 @@ plt.show()
 
 
     
-![png](output_71_0.png)
+![png](output_73_0.png)
     
 
 
@@ -3082,7 +3145,7 @@ plt.show()
 
 
     
-![png](output_73_0.png)
+![png](output_75_0.png)
     
 
 
@@ -3140,7 +3203,7 @@ plt.show()
 
 
     
-![png](output_75_0.png)
+![png](output_77_0.png)
     
 
 
@@ -3198,7 +3261,7 @@ plt.show()
 
 
     
-![png](output_77_0.png)
+![png](output_79_0.png)
     
 
 
@@ -3256,7 +3319,7 @@ plt.show()
 
 
     
-![png](output_79_0.png)
+![png](output_81_0.png)
     
 
 
